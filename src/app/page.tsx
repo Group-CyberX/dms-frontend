@@ -1,40 +1,7 @@
-"use client"
+import Image from "next/image";
 
-import * as React from "react"
-import { Search } from "lucide-react"
-
-// Import your provided UI components
-import { Card, CardContent } from "@/components/ui/card"
-
-// Import SearchFilters component from the specified location
-import { SearchFilters } from "@/components/ui/search/searchfilter"
-
-export default function AdvancedSearch() {
+export default function Home() {
   return (
-<<<<<<< HEAD
-    <div className="w-full max-w-6xl mx-auto space-y-8 p-6 bg-transparent">
-      
-      {/* 1. Page Title & Description Section */}
-      <div className="space-y-1">
-        <h1 className="text-2xl font-bold text-[#953002]">Advanced Search</h1>
-        <p className="text-slate-500 text-sm">
-          Search documents using advanced filters and criteria
-        </p>
-      </div>
-
-      {/* 2. Search Filters Component */}
-      {/* This component (imported from components/ui/search/searchfilter) 
-          contains the primary "Search Query" text box as shown in the screenshot. 
-      */}
-      <SearchFilters />
-
-      {/* 3. Search Results Section */}
-      <div className="space-y-4">
-        {/* Results Header */}
-        <div className="flex items-center justify-between border-b pb-4 border-slate-200">
-          <h2 className="text-lg font-semibold text-slate-700">Search Results</h2>
-          <span className="text-sm font-medium text-slate-500">0 documents found</span>
-=======
     <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
       <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
         <Image
@@ -66,25 +33,33 @@ export default function AdvancedSearch() {
             </a>{" "}
             center.
           </p>
->>>>>>> 98eb94af91edba9e9159d01c3a19d3bf02d60ace
         </div>
-
-        {/* Empty State Result Area
-            Matches the request to exclude data while maintaining the results container.
-        */}
-        <Card className="border-dashed border-2 bg-slate-50/50 py-16 flex flex-col items-center justify-center">
-          <CardContent className="flex flex-col items-center justify-center text-center">
-            {/* Magnifying glass icon for the search placeholder */}
-            <div className="h-12 w-12 rounded-full bg-slate-100 flex items-center justify-center mb-4 text-slate-400">
-              <Search size={24} />
-            </div>
-            <p className="text-slate-600 font-medium text-lg">No results to display</p>
-            <p className="text-sm text-slate-400 mt-1 max-w-xs">
-              Enter keywords in the search query above or adjust your filters to find documents.
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
+          <a
+            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
+            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <Image
+              className="dark:invert"
+              src="/vercel.svg"
+              alt="Vercel logomark"
+              width={16}
+              height={16}
+            />
+            Deploy Now
+          </a>
+          <a
+            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
+            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Documentation
+          </a>
+        </div>
+      </main>
     </div>
-  )
+  );
 }
