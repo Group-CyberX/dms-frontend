@@ -12,7 +12,7 @@ import {
 export default function AuditFilter(){
     return (
         <Card>
-            <h6 className="text-lg font-semibold p-4 pb-0">
+            <h6 className="text-lg font-semibold p-4 pb-1">
                 Filters
             </h6>
             <CardContent className="p-4 ">
