@@ -79,8 +79,8 @@ export default function ShareDocumentModal({
               className="w-full px-3 py-2.5 pr-10 border border-gray-300 rounded-md bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#8B4513] focus:border-[#8B4513] appearance-none cursor-pointer"
             >
               <option value="VIEW">View Only</option>
-              <option value="EDIT">Can Edit</option>
-              <option value="COMMENT">Can Comment</option>
+              <option value="COMMENT">View & Comment</option>
+              <option value="EDIT">Edit</option>
             </select>
             <ChevronDown className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
           </div>
