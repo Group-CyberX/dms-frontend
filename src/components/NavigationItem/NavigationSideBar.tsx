@@ -44,7 +44,7 @@ export default function NavigationSideBar() {
     { title: "My Tasks", url: "/my-tasks", icon: <CheckSquare size={18} /> },
     { title: "Workflows", url: "/workflows", icon: <Workflow size={18} /> },
     { title: "Recycle Bin", url: "/recycle-bin", icon: <Trash2 size={18} /> },
-    { title: "Audit Logs", url: "/audit-logs", icon: <ScrollText size={18} /> },
+    { title: "Audit Logs", url: "/audit", icon: <ScrollText size={18} /> },
     { title: "ERP Integration", url: "/erp", icon: <Link2 size={18} /> },
     { title: "User Management", url: "/users", icon: <Users size={18} /> },
     { title: "Role Management", url: "/roles", icon: <Shield size={18} /> },
