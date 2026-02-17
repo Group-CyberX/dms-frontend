@@ -42,7 +42,7 @@ export default function AuditTable(){
     ]
 
     return(
-        <div className="rounded-md border">
+        <div className="rounded-md border bg-card">
             <h6 className="text-lg font-semibold p-4 pb-0">Activity log - 3 entries</h6>
             <Table>
             <TableHeader>
@@ -65,8 +65,15 @@ export default function AuditTable(){
                         <TableCell>{log.entity}</TableCell>
                         <TableCell>{log.ip}</TableCell>
                         <TableCell>
-                            <Badge variant={log.status==="Success"?"default":"destructive"}>
-                                {log.status}
+                            <Badge 
+                            className={`px-4 py-2 rounded ${
+                                log.status === "Success"
+                                ? "bg-[#953002] hover:bg-[#7a2601] text-white"
+                                : log.status === "Failed"
+                                ? "bg-[#D4183D] hover:bg-[#b01333] text-white"
+                                : ""
+          }`}>
+                            {log.status}
                             </Badge>
                         </TableCell>
                     </TableRow>
