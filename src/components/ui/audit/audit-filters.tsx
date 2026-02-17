@@ -1,6 +1,7 @@
-import {Card, CardContent} from "@/components/ui/card";
+import {Card, CardContent, CardHeader} from "@/components/ui/card";
 import {Button} from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Filter} from "lucide-react";
 import {
     Select,
     SelectContent,
@@ -12,9 +13,10 @@ import {
 export default function AuditFilter(){
     return (
         <Card className="shadow-sm border-muted">
-            <h6 className="text-lg font-semibold p-4 pb-1">
+            <CardHeader className="flex flex-row items-center gap-2 space-y-0">
+                <Filter className="h-4 w-4 text-muted-foreground" />
                 Filters
-            </h6>
+            </CardHeader>
             <CardContent className="p-4 ">
                 {/*filters*/}
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
