@@ -1,115 +1,51 @@
-'use client'
+"use client"
 
-import * as React from 'react'
-import { useState } from 'react'
+import * as React from "react"
+import { Search } from "lucide-react"
 
-import { Input }     from '@/components/ui/input'
-import { Button }    from '@/components/ui/button'
-import { Card,
-         CardHeader,
-         CardTitle,
-         CardContent } from '@/components/ui/card'
-import { Separator } from '@/components/ui/separator'
+// Import your provided UI components
+import { Card, CardContent } from "@/components/ui/card"
 
-/* 👇 your reusable filter component (build it separately) */
-import {SearchFilters}  from '@/components/ui/search/searchfilter'
+// Import SearchFilters component from the specified location
+import { SearchFilters } from "@/components/ui/search/searchfilter"
 
-export default function AdvancedSearchPage() {
-  const [query, setQuery] = useState<string>('')
-
-  /*  ───────────────────────────────────────────
-      You can replace this later with real data
-  ─────────────────────────────────────────────*/
-  const results: never[] = []   // always empty (spec requirement)
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    // TODO: call your search API / mutation here
-  }
-
+export default function AdvancedSearch() {
   return (
-    <main className="mx-auto max-w-5xl px-4 py-10 space-y-8">
-      {/* Page Heading */}
-      <header className="space-y-1.5">
-        <h1 className="text-3xl font-semibold tracking-tight">
-          Advanced Search
-        </h1>
-        <p className="text-muted-foreground">
+    <div className="w-full max-w-6xl mx-auto space-y-8 p-6 bg-transparent">
+      
+      {/*  Page Title & Description Section */}
+      <div className="space-y-1">
+        <h1 className="text-2xl font-bold text-[#953002]">Advanced Search</h1>
+        <p className="text-slate-500 text-sm">
           Search documents using advanced filters and criteria
         </p>
-      </header>
+      </div>
 
-      {/* Search-Filters Card (delegated to separate component) */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <svg
-              className="h-5 w-5 text-primary"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={2}
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707l-6.414 6.415A1 1 0 0014 13v4l-4 2v-6a1 1 0 00-.293-.707L3.293 6.707A1 1 0 013 6V4z"
-              />
-            </svg>
-            Search Filters
-          </CardTitle>
-        </CardHeader>
+      
+      <SearchFilters />
 
-        <CardContent>
-          {/* 🔍 main query input */}
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <Input
-              placeholder="Enter keywords, document content, or metadata…"
-              className="w-full"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
+      {/*  Search Results Section */}
+      <div className="space-y-4">
+        {/* Results Header */}
+        <div className="flex items-center justify-between border-b pb-4 border-slate-200">
+          <h2 className="text-lg font-semibold text-slate-700">Search Results</h2>
+          <span className="text-sm font-medium text-slate-500">0 documents found</span>
+        </div>
 
-            {/* 🛠 additional filters */}
-            <SearchFilters />
-
-            {/* action buttons */}
-            <div className="flex flex-wrap gap-3">
-              <Button type="submit">Search</Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setQuery('')}
-              >
-                Clear Filters
-              </Button>
-              <Button type="button" variant="secondary">
-                Save Search
-              </Button>
+        
+        <Card className="border-dashed border-2 bg-slate-50/50 py-16 flex flex-col items-center justify-center">
+          <CardContent className="flex flex-col items-center justify-center text-center">
+            {/* Magnifying glass icon for the search placeholder */}
+            <div className="h-12 w-12 rounded-full bg-slate-100 flex items-center justify-center mb-4 text-slate-400">
+              <Search size={24} />
             </div>
-          </form>
-        </CardContent>
-      </Card>
-
-      {/* Search-Results Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Search Results</CardTitle>
-        </CardHeader>
-
-        <Separator />
-
-        <CardContent className="py-12 flex flex-col items-center justify-center">
-          {results.length === 0 ? (
-            <p className="text-muted-foreground">
-              No documents found. Try adjusting your filters.
+            <p className="text-slate-600 font-medium text-lg">No results to display</p>
+            <p className="text-sm text-slate-400 mt-1 max-w-xs">
+              Enter keywords in the search query above or adjust your filters to find documents.
             </p>
-          ) : (
-            /* If you later have results, map them here */
-            <div>/* render list */</div>
-          )}
-        </CardContent>
-      </Card>
-    </main>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
   )
 }
