@@ -6,8 +6,8 @@ import AuditRetention from "@/components/ui/audit/audit-retention"
 
 export default function AuditPage() {
     return (
-        <main className="min-h-screen bg-muted/40">
-            <div className="max-w-7xl mx-auto p-6 space-y-6">
+        <main className="min-h-screen bg-muted/40 flex justify-center">
+            <div className="w-full max-w-7xl p-4 md:p-8 lg:p-12">
                 <AuditHeader />
                 <AuditFilter />
                 <AuditTable />
