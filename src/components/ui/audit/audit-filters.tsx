@@ -11,7 +11,7 @@ import {
 
 export default function AuditFilter(){
     return (
-        <Card>
+        <Card className="shadow-sm border-muted">
             <h6 className="text-lg font-semibold p-4 pb-1">
                 Filters
             </h6>
@@ -25,7 +25,7 @@ export default function AuditFilter(){
                         </label>
                         <Select>
                             <SelectTrigger>
-                                <SelectValue placeholder="Select User" />
+                                <SelectValue placeholder="All users" />
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="user1">User 1</SelectItem>
@@ -40,7 +40,7 @@ export default function AuditFilter(){
                     </label>
                     <Select>
                         <SelectTrigger>
-                            <SelectValue placeholder="Select Action" />
+                            <SelectValue placeholder="All actions" />
                         </SelectTrigger>
                         <SelectContent>
                             <SelectItem value="login">Login</SelectItem>
@@ -67,11 +67,11 @@ export default function AuditFilter(){
             </div>
 
             {/*Filter Button*/}
-            <div className="flex justify-start mt-6 gap-2">
-                <Button variant="outline">
+            <div className="flex justify-start mt-6 gap-2 pt-4 border-t">
+                <Button variant="outline" className="bg-[#953002] text-white">
                     Apply Filters
                 </Button>
-                <Button>
+                <Button className="bg-[#FFFFFF] text-[#242424] border-1">
                     Clear 
                 </Button>
             </div>
