@@ -10,6 +10,7 @@ export default function AuditPage() {
             <div className="max-w-7xl mx-auto p-6 space-y-6">
                 <AuditHeader />
                 <AuditFilter />
+                <h1>Hello!</h1>
                 <AuditTable />
                 <AuditRetention />
             </div>
