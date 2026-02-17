@@ -84,7 +84,7 @@ export default function WorkflowBuilderPage() {
                     onChange={(e) => setSelectedDocument(e.target.value)}
                     className="w-full h-9 px-3 py-2 border border-input rounded-md bg-transparent text-sm shadow-xs focus:outline-none focus:ring-[3px] focus:ring-ring/50 focus:border-ring"
                   >
-                    <option value=""disabled selected hidden>Choose a document</option>
+                    <option value=""disabled hidden>Choose a document</option>
                     <option value="invoice1">Invoice_Q1_2025.pdf</option>
                     <option value="contract1">Contract_ABC_Corp.pdf</option>
                     <option value="po1">PO_12345.pdf</option>
@@ -101,7 +101,7 @@ export default function WorkflowBuilderPage() {
                     onChange={(e) => setSelectedTemplate(e.target.value)}
                     className="w-full h-9 px-3 py-2 border border-input rounded-md bg-transparent text-sm shadow-xs focus:outline-none focus:ring-[3px] focus:ring-ring/50 focus:border-ring"
                   >
-                    <option value=""disabled selected hidden>Choose a template</option>
+                    <option value=""disabled hidden>Choose a template</option>
                     <option value="invoice">Invoice Approval</option>
                     <option value="contract">Contract Review</option>
                     <option value="po">PO Approval</option>
@@ -159,7 +159,7 @@ export default function WorkflowBuilderPage() {
                           onChange={(e) => updateApprover(approver.id, e.target.value)}
                           className="flex-1 h-9 px-3 py-2 border border-input rounded-md bg-transparent text-sm shadow-xs focus:outline-none focus:ring-[3px] focus:ring-ring/50 focus:border-ring"
                         >
-                          <option value=""disabled selected hidden>Select approver</option>
+                          <option value=""disabled hidden>Select approver</option>
                           <option value="user1">John Doe</option>
                           <option value="user2">Jane Smith</option>
                           <option value="user3">Kamal Gunarathne</option>
@@ -208,7 +208,7 @@ export default function WorkflowBuilderPage() {
                     onChange={(e) => setPriority(e.target.value)}
                     className="w-full h-9 px-3 py-2 border border-input rounded-md bg-transparent text-sm shadow-xs focus:outline-none focus:ring-[3px] focus:ring-ring/50 focus:border-ring"
                   >
-                    <option value=""disabled selected hidden>Select priority</option>
+                    <option value=""disabled hidden>Select priority</option>
                     <option value="low">Low</option>
                     <option value="medium">Medium</option>
                     <option value="high">High</option>
