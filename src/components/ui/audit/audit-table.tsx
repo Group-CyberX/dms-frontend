@@ -43,6 +43,7 @@ export default function AuditTable(){
 
     return(
         <div className="rounded-md border">
+            <h6 className="text-lg font-semibold p-4 pb-0">Activity log - 3 entries</h6>
             <Table>
             <TableHeader>
                 <TableRow>

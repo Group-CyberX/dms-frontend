@@ -12,7 +12,10 @@ import {
 export default function AuditFilter(){
     return (
         <Card>
-            <CardContent className="p-6">
+            <h6 className="text-lg font-semibold p-4 pb-0">
+                Filters
+            </h6>
+            <CardContent className="p-4 ">
                 {/*filters*/}
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                     {/*User Filter*/}
