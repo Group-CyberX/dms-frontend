@@ -64,12 +64,12 @@ export default function AuditFilter(){
             </div>
 
             {/*Filter Button*/}
-            <div className="flex justify-end mt-6 gap-2">
+            <div className="flex justify-start mt-6 gap-2">
                 <Button variant="outline">
-                    Clear 
-                </Button>
-                <Button >
                     Apply Filters
+                </Button>
+                <Button>
+                    Clear 
                 </Button>
             </div>
             </CardContent>
