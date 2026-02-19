@@ -14,7 +14,7 @@ export default function AuditFilter(){
     return (
         <Card className="shadow-sm border-muted">
             <CardHeader className="flex flex-row items-center gap-2 space-y-0">
-                <Filter className="h-4 w-4 text-muted-foreground" />
+            <Filter className="h-4 w-4 text-muted-foreground" />
                 Filters
             </CardHeader>
             <CardContent className="p-4 ">
@@ -73,7 +73,7 @@ export default function AuditFilter(){
                 <Button variant="outline" className="bg-[#953002] text-white hover:bg-[#6B2100] hover:text-white active:bg-[#953002] active:text-white">
                     Apply Filters
                 </Button>
-                <Button className="bg-[#FFFFFF] text-[#242424] border-1 hover:bg-[#953002] hover:text-white">
+                <Button className="bg-[#FFFFFF] text-[#242424] border-1 hover:bg-[#F8F8FF] hover:text-black active:bg-white active:text-black">
                     Clear 
                 </Button>
             </div>

@@ -9,8 +9,11 @@ import {
   
   import {Badge} from "@/components/ui/badge";
 import { timeStamp } from "console";
+import ExportButtons from "@/components/ui/audit/exportButton";
 
-export default function AuditTable(){
+import { forwardRef, useImperativeHandle } from "react";
+
+const AuditTable = forwardRef(function AuditTable(props, ref) {
     const logs=[
         {
             id:1,
@@ -40,6 +43,38 @@ export default function AuditTable(){
             status:"Failed"
         }
     ]
+
+
+    const exportToCSV = () => {
+        if (!logs || logs.length === 0) return;
+
+        const headers = ["User", "Action", "Entity", "Timestamp", "Status"];
+
+        const rows = logs.map(log => [
+            log.user,
+            log.action,
+            log.entity,
+            log.timeStamp,
+            log.status
+        ]);
+
+        const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n");
+
+        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+
+        const link = document.createElement("a");
+        link.href = url;
+        link.setAttribute("download", "audit_logs.csv");
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    };
+
+    useImperativeHandle(ref, () => ({
+        exportToCSV
+    }));
 
     return(
         <div className="rounded-md border bg-card">
@@ -80,7 +115,11 @@ export default function AuditTable(){
                 ))}
             </TableBody>
         </Table>
+        <ExportButtons onExportCSV={exportToCSV} />
         
         </div>
     )
-}
+});
+
+export default AuditTable;
+

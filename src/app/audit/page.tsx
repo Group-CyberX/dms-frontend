@@ -1,18 +1,24 @@
 "use client"
 
-import AuditHeader from "@/components/ui/audit/audit-header"
-import AuditFilter from "@/components/ui/audit/audit-filters"
-import AuditTable from "@/components/ui/audit/audit-table"
-import AuditRetention from "@/components/ui/audit/audit-retention"
+import React, { useRef } from "react";
+import AuditHeader from "@/components/ui/audit/audit-header";
+import AuditFilter from "@/components/ui/audit/audit-filters";
+import AuditTable from "@/components/ui/audit/audit-table";
+import AuditRetention from "@/components/ui/audit/audit-retention";
 
 export default function AuditPage() {
+    // Reference to call exportToCSV from AuditTable
+    const tableRef = useRef<{ exportToCSV: () => void }>(null);
+
     return (
-        <main className="min-h-screen bg-muted/40 flex justify-center bg-[#953002]">
+        <main className="min-h-screen bg-muted/40 flex justify-center ">
             <div className="w-full max-w-7xl p-4 md:p-8 lg:p-12 space-y-4">
-                <AuditHeader />
+                <AuditHeader onExportCSV={() => tableRef.current?.exportToCSV()} />
                 <AuditFilter />
-                <AuditTable />
+                <AuditTable ref={tableRef} />
                 <AuditRetention />
             </div>
         </main>
-    )}
+    );
+}
+
