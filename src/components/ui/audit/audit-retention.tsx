@@ -3,7 +3,7 @@ import { ShieldCheck }  from "lucide-react";
 
 export default function AuditRetention() {
     return (
-        <div className="flex items-start gap-5">
+        <div className="flex items-start gap-5 padding-4">
             <ShieldCheck className="h-6 w-6 text-green-500" />
             <div>
                 <h3 className="text-lg font-semibold mb-1">Audit log Retention</h3>

@@ -70,10 +70,10 @@ export default function AuditFilter(){
 
             {/*Filter Button*/}
             <div className="flex justify-start mt-6 gap-2 pt-4 border-t">
-                <Button variant="outline" className="bg-[#953002] text-white">
+                <Button variant="outline" className="bg-[#953002] text-white hover:bg-[#6B2100] hover:text-white active:bg-[#953002] active:text-white">
                     Apply Filters
                 </Button>
-                <Button className="bg-[#FFFFFF] text-[#242424] border-1">
+                <Button className="bg-[#FFFFFF] text-[#242424] border-1 hover:bg-[#953002] hover:text-white">
                     Clear 
                 </Button>
             </div>
