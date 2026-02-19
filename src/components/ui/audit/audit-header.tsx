@@ -3,9 +3,10 @@ import { Download, FileText } from "lucide-react"
 
 type AuditHeaderProps = {
     onExportCSV?: () => void;
+    onExportPDF?: () => void;
 };
 
-export default function AuditHeader({ onExportCSV }: AuditHeaderProps) {
+export default function AuditHeader({ onExportCSV, onExportPDF }: AuditHeaderProps) {
     return (
         <div className="flex items-center justify-between">
             {/*left side*/}
@@ -26,7 +27,10 @@ export default function AuditHeader({ onExportCSV }: AuditHeaderProps) {
                     <Download className="h-4 w-4"/>
                     Export CSV
                 </Button>
-                <Button className="gap-2 bg-[#953002] text-white border-1 hover:bg-[#6B2100] hover:text-white active:bg-[#953002] active:text-white">
+                <Button 
+                    className="gap-2 bg-[#953002] text-white border-1 hover:bg-[#6B2100] hover:text-white active:bg-[#953002] active:text-white"
+                    onClick={onExportPDF}
+                >
                     <FileText className="h-4 w-4"/>
                     Export PDF
                 </Button>

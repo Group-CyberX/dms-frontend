@@ -12,6 +12,8 @@ import { timeStamp } from "console";
 import ExportButtons from "@/components/ui/audit/exportButton";
 
 import { forwardRef, useImperativeHandle } from "react";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 const AuditTable = forwardRef(function AuditTable(props, ref) {
     const logs=[
@@ -73,8 +75,39 @@ const AuditTable = forwardRef(function AuditTable(props, ref) {
     };
 
     useImperativeHandle(ref, () => ({
-        exportToCSV
+        exportToCSV,
+        exportToPDF
     }));
+
+    const exportToPDF = () => {
+  const doc = new jsPDF();
+
+  // Title
+  doc.text("Audit Logs Report", 14, 15);
+
+  // Table columns
+  const tableColumn = ["User", "Action", "Entity", "Timestamp", "Status"];
+
+  // Table rows
+  const tableRows = logs.map(log => [
+    log.user,
+    log.action,
+    log.entity,
+    log.timeStamp,
+    log.status
+  ]);
+
+  // Generate table
+  autoTable(doc, {
+    head: [tableColumn],
+    body: tableRows,
+    startY: 20,
+  });
+
+  // Save file
+  doc.save("audit_logs.pdf");
+};
+
 
     return(
         <div className="rounded-md border bg-card">
