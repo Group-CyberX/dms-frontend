@@ -148,7 +148,7 @@ const AuditTable = forwardRef(function AuditTable(props, ref) {
                 ))}
             </TableBody>
         </Table>
-        <ExportButtons onExportCSV={exportToCSV} />
+    
         
         </div>
     )
