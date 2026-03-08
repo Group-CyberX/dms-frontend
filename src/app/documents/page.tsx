@@ -23,7 +23,7 @@ export default function DocumentsPage() {
       name: 'Invoice_Q1_2025.pdf',
       size: '2.4 MB',
       type: 'PDF',
-      owner: 'John Doe',
+      owner: 'Malith',
       modified: 'Feb 5, 2026',
       status: 'Approved',
       statusColor: 'bg-amber-700 text-white',
@@ -33,7 +33,7 @@ export default function DocumentsPage() {
       name: 'Contract_Vendor_ABC.pdf',
       size: '1.9 MB',
       type: 'PDF',
-      owner: 'Jane Smith',
+      owner: 'Samith',
       modified: 'Feb 4, 2026',
       status: 'Pending Approval',
       statusColor: 'bg-amber-400 text-white',
@@ -43,7 +43,7 @@ export default function DocumentsPage() {
       name: 'Purchase_Order_12345.xlsx',
       size: '512 KB',
       type: 'Excel',
-      owner: 'Mike Johnson',
+      owner: 'Kasuni',
       modified: 'Feb 3, 2026',
       status: 'Draft',
       statusColor: 'bg-gray-200 text-gray-800',
@@ -53,7 +53,7 @@ export default function DocumentsPage() {
       name: 'Quality_Report_Jan.pdf',
       size: '3.1 MB',
       type: 'PDF',
-      owner: 'Sarah Williams',
+      owner: 'Samadhi',
       modified: 'Feb 2, 2026',
       status: 'Approved',
       statusColor: 'bg-amber-700 text-white',
@@ -63,7 +63,7 @@ export default function DocumentsPage() {
       name: 'Employee_Contract.docx',
       size: '890 KB',
       type: 'Word',
-      owner: 'John Doe',
+      owner: 'Akila',
       modified: 'Feb 1, 2026',
       status: 'Pending Approval',
       statusColor: 'bg-amber-400 text-white',
@@ -91,10 +91,10 @@ export default function DocumentsPage() {
         </div>
       </div>
 
-      {/* Main Content */}
+      {/* Main Content with mock data*/}
       <div className="p-6">
         <div className="space-y-6">
-          {/* Folders Section */}
+          {/* Folders Section with mock data */}
           <div className="bg-white rounded-lg shadow-sm p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
               <Folder className="w-5 h-5" />
@@ -118,7 +118,7 @@ export default function DocumentsPage() {
             </div>
           </div>
 
-          {/* All Documents Section */}
+          {/* All Documents Section with mock data */}
           <div className="bg-white rounded-lg shadow-sm p-6">
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6">
               <h2 className="text-lg font-semibold text-gray-900">All Documents</h2>
@@ -130,7 +130,7 @@ export default function DocumentsPage() {
               />
             </div>
 
-            {/* Documents Table */}
+            {/* Documents Table with mock data*/}
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="border-b border-gray-200">
