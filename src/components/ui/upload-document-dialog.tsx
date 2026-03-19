@@ -57,39 +57,59 @@ export function UploadDocumentDialog({
   };
 
   const handleUpload = async () => {
-    if (!files.length || !documentName || !category) {
-      alert('Please fill in all required fields');
-      return;
-    }
+    if (!files.length || !documentName || !category) {
+      alert('Please fill in all required fields');
+      return;
+    }
 
-    setIsUploading(true);
-    try {
-      // TODO: Implement actual upload logic
-      console.log('Uploading document:', {
-        files,
-        documentName,
-        category,
-        tags,
-        description,
-      });
+    setIsUploading(true);
+    try {
+      console.log('Preparing to send document to backend...');
 
-      // Simulated upload delay
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      // 1. Create the FormData object
+      const formData = new FormData();
+      
+      // Attach the first file from the array (since your backend expects a single "file")
+      formData.append('file', files[0]); 
+      
+      // Attach the text fields. 
+      // Make sure these names match the @RequestParam names in your Spring Boot controller!
+      formData.append('title', documentName);
+      formData.append('category', category);
+      if (tags) formData.append('tags', tags);
+      if (description) formData.append('description', description);
 
-      // Reset form
-      setFiles([]);
-      setDocumentName('');
-      setCategory('');
-      setTags('');
-      setDescription('');
-      onOpenChange(false);
-    } catch (error) {
-      console.error('Upload failed:', error);
-      alert('Upload failed. Please try again.');
-    } finally {
-      setIsUploading(false);
-    }
-  };
+      // 2. Send the request to Spring Boot
+      // Note: Make sure the port matches your backend (usually 8080)
+      const response = await fetch('http://localhost:8080/api/documents/upload', {
+        method: 'POST',
+        body: formData, 
+        // IMPORTANT: Do NOT set the 'Content-Type' header manually when using FormData. 
+        // The browser does it automatically to set the correct multipart boundary.
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('Upload successful!', data);
+
+      // 3. Reset form on success
+      setFiles([]);
+      setDocumentName('');
+      setCategory('');
+      setTags('');
+      setDescription('');
+      onOpenChange(false);
+      
+    } catch (error) {
+      console.error('Upload failed:', error);
+      alert('Upload failed. Please check the console and your backend server.');
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
