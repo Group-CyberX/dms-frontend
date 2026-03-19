@@ -82,18 +82,21 @@ export function UploadDocumentDialog({
       // 2. Send the request to Spring Boot
       // Note: Make sure the port matches your backend (usually 8080)
       const response = await fetch('http://localhost:8080/api/documents/upload', {
-        method: 'POST',
-        body: formData, 
-        // IMPORTANT: Do NOT set the 'Content-Type' header manually when using FormData. 
-        // The browser does it automatically to set the correct multipart boundary.
-      });
+        method: 'POST',
+        body: formData, 
+      });
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
+      // --- NEW ERROR HANDLING ---
+      if (!response.ok) {
+        // Even though it failed, we parse the JSON to get the backend's error message
+        const errorData = await response.json(); 
+        // Throw the specific backend message instead of a generic one
+        throw new Error(errorData.message || 'Upload failed due to a server error.');
+      }
 
-      const data = await response.json();
-      console.log('Upload successful!', data);
+      const data = await response.json();
+      console.log('Upload successful!', data);
+      alert('Upload successful!');
 
       // 3. Reset form on success
       setFiles([]);
@@ -104,11 +107,16 @@ export function UploadDocumentDialog({
       onOpenChange(false);
       
     } catch (error) {
-      console.error('Upload failed:', error);
-      alert('Upload failed. Please check the console and your backend server.');
-    } finally {
-      setIsUploading(false);
-    }
+      console.error('Upload failed:', error);
+      
+      // Check if it's a standard Error object before reading .message
+      const errorMessage = error instanceof Error ? error.message : 'An unknown server error occurred';
+      
+      // Now the alert will show the exact rule they broke!
+      alert(`Upload failed: ${errorMessage}`); 
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   return (
