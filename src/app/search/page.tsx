@@ -1,50 +1,135 @@
 "use client"
 
 import * as React from "react"
-import { Search } from "lucide-react"
+import { useRouter } from "next/navigation"
 
-// Import your provided UI components
 import { Card, CardContent } from "@/components/ui/card"
-
-// Import SearchFilters component from the specified location
 import { SearchFilters } from "@/components/ui/search/searchfilter"
+import { useSearchStore } from "@/store/search-store"
 
 export default function AdvancedSearch() {
+  const router = useRouter()
+
+  const { results } = useSearchStore()
+  const safeResults = Array.isArray(results) ? results : []
+
+  const handleClick = (title: string) => {
+    // 🚀 Future: navigate to document details page
+    // router.push(`/documents/${id}`)
+    console.log("Clicked:", title)
+  }
+
   return (
-    <div className="w-full max-w-6xl mx-auto space-y-8 p-6 bg-transparent">
-      
-      {/*  Page Title & Description Section */}
-      <div className="space-y-1">
-        <h1 className="text-2xl font-bold text-[#953002]">Advanced Search</h1>
-        <p className="text-slate-500 text-sm">
-          Search documents using advanced filters and criteria
+    <div className="w-full max-w-5xl mx-auto space-y-6 p-6">
+
+      {/* 🔥 Header */}
+      <div>
+        <h1 className="text-3xl font-bold text-[#953002]">
+          Advanced Search
+        </h1>
+        <p className="text-slate-500 mt-1">
+          Search documents using keywords
         </p>
       </div>
 
-      
+      {/* 🔍 Filters */}
       <SearchFilters />
 
-      {/*  Search Results Section */}
+      {/* 📄 Results */}
       <div className="space-y-4">
-        {/* Results Header */}
-        <div className="flex items-center justify-between border-b pb-4 border-slate-200">
-          <h2 className="text-lg font-semibold text-slate-700">Search Results</h2>
-          <span className="text-sm font-medium text-slate-500">0 documents found</span>
+
+        <div className="flex justify-between items-center">
+          <h2 className="text-lg font-semibold text-slate-700">
+            Search Results
+          </h2>
+
+          <span className="text-sm text-slate-500">
+            {safeResults.length} documents found
+          </span>
         </div>
 
-        
-        <Card className="border-dashed border-2 bg-slate-50/50 py-16 flex flex-col items-center justify-center">
-          <CardContent className="flex flex-col items-center justify-center text-center">
-            {/* Magnifying glass icon for the search placeholder */}
-            <div className="h-12 w-12 rounded-full bg-slate-100 flex items-center justify-center mb-4 text-slate-400">
-              <Search size={24} />
-            </div>
-            <p className="text-slate-600 font-medium text-lg">No results to display</p>
-            <p className="text-sm text-slate-400 mt-1 max-w-xs">
-              Enter keywords in the search query above or adjust your filters to find documents.
-            </p>
-          </CardContent>
-        </Card>
+        {/* ❌ No Results */}
+        {safeResults.length === 0 ? (
+          <div className="text-center py-10 border rounded-lg bg-slate-50">
+            <p className="text-slate-500">No documents found</p>
+          </div>
+        ) : (
+          /* ✅ Results List */
+          <div className="space-y-3">
+            {safeResults.map((doc, index) => {
+              const metadata = doc.metadata || []
+              const metaObj: Record<string, string> = {}
+              metadata.forEach((m) => {
+                metaObj[m.key.toLowerCase()] = m.value
+              })
+
+              return (
+                <Card
+                  key={doc.documentId || index}
+                  className="p-5 cursor-pointer hover:shadow-md transition border border-slate-200"
+                  onClick={() => handleClick(doc.title)}
+                >
+                  <CardContent className="p-0 space-y-3">
+                    {/* Title & Status */}
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1">
+                        <p className="font-semibold text-slate-900 text-base">
+                          📄 {doc.title || "Untitled document"}
+                        </p>
+                        {metaObj.description && (
+                          <p className="text-sm text-slate-600 mt-1">
+                            {metaObj.description}
+                          </p>
+                        )}
+                      </div>
+                      {metaObj.status && (
+                        <span
+                          className={`px-3 py-1 rounded text-xs font-medium whitespace-nowrap ${
+                            metaObj.status === "Approved"
+                              ? "bg-red-100 text-red-800"
+                              : metaObj.status === "Pending"
+                              ? "bg-yellow-100 text-yellow-800"
+                              : "bg-slate-100 text-slate-800"
+                          }`}
+                        >
+                          {metaObj.status}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Metadata Row */}
+                    <div className="flex flex-wrap items-center gap-4 text-xs text-slate-600 border-t pt-3">
+                      {metaObj.owner && (
+                        <div className="flex items-center gap-1">
+                          <span>👤</span>
+                          <span>{metaObj.owner}</span>
+                        </div>
+                      )}
+                      {metaObj.date && (
+                        <div className="flex items-center gap-1">
+                          <span>📅</span>
+                          <span>{metaObj.date}</span>
+                        </div>
+                      )}
+                      {metaObj.category && (
+                        <div className="flex items-center gap-1">
+                          <span>🏷️</span>
+                          <span>{metaObj.category}</span>
+                        </div>
+                      )}
+                      {metaObj.tags && (
+                        <div className="flex items-center gap-1">
+                          <span>🏷️</span>
+                          <span>{metaObj.tags}</span>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              )
+            })}
+          </div>
+        )}
       </div>
     </div>
   )
