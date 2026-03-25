@@ -12,7 +12,7 @@ export default function AuditPage() {
 
     const [logs, setLogs] = useState<any[]>([]);
     useEffect(() => {
-        fetch("http://localhost:8080/admin/logs")
+        fetch("http://localhost:8081/admin/logs")
             .then((response) => response.json())    
             .then((data) => {
                 console.log("Fetched logs:", data);
