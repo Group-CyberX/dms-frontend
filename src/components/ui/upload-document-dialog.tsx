@@ -57,39 +57,67 @@ export function UploadDocumentDialog({
   };
 
   const handleUpload = async () => {
-    if (!files.length || !documentName || !category) {
-      alert('Please fill in all required fields');
-      return;
-    }
+    if (!files.length || !documentName || !category) {
+      alert('Please fill in all required fields');
+      return;
+    }
 
-    setIsUploading(true);
-    try {
-      // TODO: Implement actual upload logic
-      console.log('Uploading document:', {
-        files,
-        documentName,
-        category,
-        tags,
-        description,
+    setIsUploading(true);
+    try {
+      console.log('Preparing to send document to backend...');
+
+      // 1. Create the FormData object
+      const formData = new FormData();
+      
+      // Attach the first file from the array (since your backend expects a single "file")
+      formData.append('file', files[0]); 
+      
+      // Attach the text fields. 
+      // Make sure these names match the @RequestParam names in your Spring Boot controller!
+      formData.append('title', documentName);
+      formData.append('category', category);
+      if (tags) formData.append('tags', tags);
+      if (description) formData.append('description', description);
+
+      // 2. Send the request to Spring Boot
+      // Note: Make sure the port matches your backend (usually 8080)
+      const response = await fetch('http://localhost:8081/api/documents/upload', {
+        method: 'POST',
+        body: formData, 
       });
 
-      // Simulated upload delay
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      // --- NEW ERROR HANDLING ---
+      if (!response.ok) {
+        // Even though it failed, we parse the JSON to get the backend's error message
+        const errorData = await response.json(); 
+        // Throw the specific backend message instead of a generic one
+        throw new Error(errorData.message || 'Upload failed due to a server error.');
+      }
 
-      // Reset form
-      setFiles([]);
-      setDocumentName('');
-      setCategory('');
-      setTags('');
-      setDescription('');
-      onOpenChange(false);
-    } catch (error) {
+      const data = await response.json();
+      console.log('Upload successful!', data);
+      alert('Upload successful!');
+
+      // 3. Reset form on success
+      setFiles([]);
+      setDocumentName('');
+      setCategory('');
+      setTags('');
+      setDescription('');
+      onOpenChange(false);
+      
+    } catch (error) {
       console.error('Upload failed:', error);
-      alert('Upload failed. Please try again.');
+      
+      // Check if it's a standard Error object before reading .message
+      const errorMessage = error instanceof Error ? error.message : 'An unknown server error occurred';
+      
+      // Now the alert will show the exact rule they broke!
+      alert(`Upload failed: ${errorMessage}`); 
     } finally {
       setIsUploading(false);
     }
-  };
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
