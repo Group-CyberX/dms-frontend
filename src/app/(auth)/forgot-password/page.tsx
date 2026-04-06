@@ -12,7 +12,7 @@ export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
   const handleForgotPassword = async () => {
   try {
-    const res = await fetch("http://localhost:8080/auth/forgot-password", {
+    const res = await fetch("http://localhost:8081/auth/forgot-password", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
