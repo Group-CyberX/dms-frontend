@@ -21,7 +21,7 @@ export function LoginForm() {
 
   const onSubmit = async (data: LoginFormValues) => {
   try {
-    const res = await fetch("http://localhost:8080/auth/login", {
+    const res = await fetch("http://localhost:8081/auth/login", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

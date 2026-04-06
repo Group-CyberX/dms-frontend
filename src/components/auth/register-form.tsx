@@ -20,7 +20,7 @@ export function RegisterForm() {
 
   const onSubmit = async (data: RegisterFormValues) => {
   try {
-    const res = await fetch("http://localhost:8080/auth/register", {
+    const res = await fetch("http://localhost:8081/auth/register", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
