@@ -56,3 +56,20 @@ export const addBulkMetadata = async (documentId: string, metadataList: { key: s
   const response = await API.post(`/metadata/document/${documentId}/bulk`, metadataList);
   return response.data;
 }
+
+// ============================================ //
+// SEARCH LOGS
+// ============================================ //
+export const logSearchResultClick = async (query: string, clickedDocId: string) => {
+  if (!query || query.trim() === "") return;
+  
+  await API.post("/search/log", {
+    query,
+    clickedDocId
+  });
+}
+
+export const getSearchHistory = async () => {
+  const response = await API.get("/search/history");
+  return response.data;
+}

@@ -1,21 +1,49 @@
 "use client"
 
+"use client"
+
 import * as React from "react"
 import { useRouter } from "next/navigation"
 
 import { Card, CardContent } from "@/components/ui/card"
 import { SearchFilters } from "@/components/ui/search/searchfilter"
 import { useSearchStore, Document } from "@/store/search-store"
-import { FileText, User, Calendar } from "lucide-react"
+import { FileText, User, Calendar, History, Clock } from "lucide-react"
+import { logSearchResultClick, getSearchHistory } from "@/lib/api"
+import { Button } from "@/components/ui/button"
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet"
 
 export default function AdvancedSearch() {
   const router = useRouter()
 
-  const { results } = useSearchStore()
+  const { results, query } = useSearchStore()
   const safeResults: Document[] = Array.isArray(results) ? results : []
+  
+  // State for Search History
+  const [history, setHistory] = React.useState<any[]>([])
+  const [isHistoryOpen, setIsHistoryOpen] = React.useState(false)
 
+  const fetchHistory = async () => {
+    try {
+      const data = await getSearchHistory()
+      setHistory(data || [])
+    } catch (e) {
+      console.error("Failed to load search history:", e)
+    }
+  }
 
   const handleClick = (id: string) => {
+    // Log the click event to the backend before navigating
+    // Pass the active text search query or fallback if empty
+    logSearchResultClick(query || "advanced_search", id).catch(e => console.error("Failed to log search:", e))
+    
     router.push(`/documents/${id}`)
   }
 
@@ -23,13 +51,73 @@ export default function AdvancedSearch() {
     <div className="w-full max-w-5xl mx-auto space-y-6 p-6">
 
       {/* 🔥 Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-[#953002]">
-          Advanced Search
-        </h1>
-        <p className="text-slate-500 mt-1">
-          Search documents using advanced filters and criteria
-        </p>
+      <div className="flex justify-between items-start">
+        <div>
+          <h1 className="text-3xl font-bold text-[#953002]">
+            Advanced Search
+          </h1>
+          <p className="text-slate-500 mt-1">
+            Search documents using advanced filters and criteria
+          </p>
+        </div>
+
+        {/* History Button & Sheet */}
+        <Sheet open={isHistoryOpen} onOpenChange={(open) => {
+          setIsHistoryOpen(open)
+          if (open) fetchHistory()
+        }}>
+          <SheetTrigger asChild>
+            <Button variant="outline" className="flex items-center gap-2 border-slate-300">
+              <History className="w-4 h-4" />
+              Search History
+            </Button>
+          </SheetTrigger>
+          <SheetContent className="overflow-y-auto">
+            <SheetHeader className="mb-6">
+              <SheetTitle>Search History</SheetTitle>
+              <SheetDescription>
+                Recently viewed documents from past searches.
+              </SheetDescription>
+            </SheetHeader>
+
+            <div className="space-y-4 shadow-none">
+              {history.length === 0 ? (
+                <div className="text-center py-8 text-slate-500 bg-slate-50 rounded-lg">
+                  No history found.
+                </div>
+              ) : (
+                history.map((item, index) => (
+                  <div 
+                    key={item.searchId || index}
+                    onClick={() => {
+                      setIsHistoryOpen(false)
+                      router.push(`/documents/${item.documentId}`)
+                    }}
+                    className="p-3 border rounded-lg hover:bg-slate-50 cursor-pointer transition flex items-start gap-3"
+                  >
+                    <div className="mt-1 bg-[#953002]/10 p-1.5 rounded text-[#953002]">
+                      <FileText className="w-4 h-4" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-slate-800 truncate">
+                        {item.documentTitle || "Untitled Document"}
+                      </p>
+                      <div className="flex items-center gap-2 mt-1 text-xs text-slate-500">
+                        <span className="font-semibold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded">
+                          "{item.query}"
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1 mt-1 text-[10px] text-slate-400">
+                        <Clock className="w-3 h-3" />
+                        {new Date(item.timestamp).toLocaleString()}
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </SheetContent>
+        </Sheet>
       </div>
 
       {/* 🔍 Filters */}
