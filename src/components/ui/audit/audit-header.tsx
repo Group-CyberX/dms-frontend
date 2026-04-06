@@ -1,7 +1,12 @@
 import { Button } from "@/components/ui/button"
 import { Download, FileText } from "lucide-react"
 
-export default function AuditHeader(){
+type AuditHeaderProps = {
+    onExportCSV?: () => void;
+    onExportPDF?: () => void;
+};
+
+export default function AuditHeader({ onExportCSV, onExportPDF }: AuditHeaderProps) {
     return (
         <div className="flex items-center justify-between">
             {/*left side*/}
@@ -14,12 +19,19 @@ export default function AuditHeader(){
 
             {/*right side*/}
             <div className="flex items-center gap-2">
-                <Button variant="outline" className="gap-2 bg-[#953002] text-white">
-                    <FileText className="h-4 w-4"/>
+                <Button 
+                    variant="outline" 
+                    className="gap-2 bg-[#953002] text-white hover:bg-[#6B2100] hover:text-white active:bg-[#953002] active:text-white "
+                    onClick={onExportCSV}
+                >
+                    <Download className="h-4 w-4"/>
                     Export CSV
                 </Button>
-                <Button className="gap-2 bg-[#FFFFFF] text-[#242424] border-1">
-                    <Download className="h-4 w-4"/>
+                <Button 
+                    className="gap-2 bg-[#953002] text-white border-1 hover:bg-[#6B2100] hover:text-white active:bg-[#953002] active:text-white"
+                    onClick={onExportPDF}
+                >
+                    <FileText className="h-4 w-4"/>
                     Export PDF
                 </Button>
             </div>

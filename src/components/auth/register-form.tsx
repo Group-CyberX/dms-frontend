@@ -6,8 +6,10 @@ import { registerSchema, RegisterFormValues } from "@/lib/schemas/register-schem
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
+import { useRouter } from "next/navigation";
 
 export function RegisterForm() {
+  const router = useRouter();
   const {
     register,
     handleSubmit,
@@ -17,8 +19,33 @@ export function RegisterForm() {
   })
 
   const onSubmit = async (data: RegisterFormValues) => {
-    console.log("Register Data:", data)
+  try {
+    const res = await fetch("http://localhost:8080/auth/register", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        firstName: data.firstName,
+        lastName: data.lastName,
+        email: data.email,
+        password: data.password,
+        phone: data.phone,
+      }),
+    });
+
+    if (!res.ok) {
+      throw new Error("Registration failed");
+    }
+
+    // ✅ Redirect to login
+    router.push("/login");
+
+  } catch (error) {
+    console.error(error);
+    alert("Registration failed");
   }
+};
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
