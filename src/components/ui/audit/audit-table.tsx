@@ -19,7 +19,7 @@ type AuditLog={
     user_id: UUID;
     action: string;
     entity_id: UUID;
-    timeStamp: string;
+    timestamp: string;
     ip: string;
     status: string;
     };
@@ -38,8 +38,8 @@ const AuditTable = forwardRef<any, Props>(function AuditTable({logs=[]}, ref) {
             log.user_id,
             log.action,
             log.entity_id,
-            log.timeStamp,
-            log.ip,
+            formatAuditDate(log.timestamp),
+            log.ip=== "0:0:0:0:0:0:0:1" ? "127.0.0.1 (Local)" : log.ip,
             log.status
         ]);
 
@@ -76,8 +76,8 @@ const AuditTable = forwardRef<any, Props>(function AuditTable({logs=[]}, ref) {
     log.user_id,
     log.action,
     log.entity_id,
-    log.timeStamp,
-    log.ip,
+    formatAuditDate(log.timestamp),
+    log.ip=== "0:0:0:0:0:0:0:1" ? "127.0.0.1 (Local)" : log.ip,
     log.status
   ]);
 
@@ -91,11 +91,24 @@ const AuditTable = forwardRef<any, Props>(function AuditTable({logs=[]}, ref) {
   // Save file
   doc.save("audit_logs.pdf");
 };
-
+// Helper function to format date
+const formatAuditDate = (dateString: string) => {
+    if (!dateString) return "N/A";
+    const date = new Date(dateString);
+    return new Intl.DateTimeFormat('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+    }).format(date);
+};
 
     return(
         <div className="rounded-md border bg-card">
             <h6 className="text-lg font-semibold p-4 pb-0">Activity log - {logs.length} entries</h6>
+            
             <Table>
             <TableHeader>
                 <TableRow>
@@ -118,11 +131,15 @@ const AuditTable = forwardRef<any, Props>(function AuditTable({logs=[]}, ref) {
                 ) : (
                 logs.map((log)=>(
                     <TableRow key={log.log_id}>
-                        <TableCell>{log.timeStamp}</TableCell>
+                        <TableCell className="whitespace-nowrap">
+                           {formatAuditDate(log.timestamp)}
+                        </TableCell>
                         <TableCell>{log.user_id}</TableCell>
                         <TableCell>{log.action}</TableCell>
                         <TableCell>{log.entity_id}</TableCell>
-                        <TableCell>{log.ip}</TableCell>
+                        <TableCell>
+                              {log.ip === "0:0:0:0:0:0:0:1" ? "127.0.0.1 (Local)" : log.ip}
+                        </TableCell>
                         <TableCell>
                             <Badge 
                             className={`px-4 py-2 rounded ${
