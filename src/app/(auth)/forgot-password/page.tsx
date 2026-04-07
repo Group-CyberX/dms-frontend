@@ -1,11 +1,41 @@
+"use client";
+
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { ArrowLeft } from "lucide-react"
 import Link from "next/link"
+import { useState } from "react";
 
 export default function ForgotPasswordPage() {
+  const [email, setEmail] = useState("");
+  const handleForgotPassword = async () => {
+  try {
+    const res = await fetch("http://localhost:8081/auth/forgot-password", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ email }),
+    });
+
+    if (!res.ok) {
+      throw new Error("Failed to send reset link");
+    }
+
+    const result = await res.text();
+
+    console.log(result);
+
+    alert("Reset link sent successfully");
+
+  } catch (error) {
+    console.error(error);
+    alert("Error sending reset link");
+  }
+};
+
   return (
     <div className="flex items-center justify-center min-h-screen bg-[#F5F5F5]">
       <Card className="w-full max-w-md p-8 rounded-xl shadow-lg bg-white relative">
@@ -32,10 +62,16 @@ export default function ForgotPasswordPage() {
 
           <div className="space-y-2">
             <Label>Email Address</Label>
-            <Input type="email" placeholder="Enter your email" />
-          </div>
+            <Input
+              type="email"
+              placeholder="Enter your email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />          
+            </div>
 
-          <Button className="w-full bg-[#953002] hover:bg-[#7a2600]">
+          <Button onClick={handleForgotPassword}
+                  className="w-full bg-[#953002] hover:bg-[#7a2600]">
             Send Reset Link
           </Button>
 

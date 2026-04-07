@@ -80,7 +80,7 @@ export function UploadDocumentDialog({
       if (description) formData.append('description', description);
 
       // 2. Send the request to Spring Boot
-      // Note: Make sure the port matches your backend (usually 8080)
+      // Note: Make sure the port matches your backend
       const response = await fetch('http://localhost:8081/api/documents/upload', {
         method: 'POST',
         body: formData, 

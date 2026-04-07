@@ -6,8 +6,11 @@ import { loginSchema, LoginFormValues } from "@/lib/schemas/login-schema"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
+import { useRouter } from "next/navigation";
 
 export function LoginForm() {
+
+  const router = useRouter();
   const {
     register,
     handleSubmit,
@@ -17,8 +20,30 @@ export function LoginForm() {
   })
 
   const onSubmit = async (data: LoginFormValues) => {
-    console.log("Login Data:", data)
+  try {
+    const res = await fetch("http://localhost:8081/auth/login", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
+    });
+
+    if (!res.ok) {
+      throw new Error("Invalid credentials");
+    }
+
+    const result = await res.json();
+
+    localStorage.setItem("token", result.token);
+
+    router.push("/documents");
+
+  } catch (error) {
+    console.error(error);
+    alert("Login failed");
   }
+};
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">

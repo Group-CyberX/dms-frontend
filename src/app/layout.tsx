@@ -3,7 +3,6 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import NavigationSideBar from "@/components/NavigationItem/NavigationSideBar";
-import { Header } from "@/components/NavigationItem/Header";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -22,9 +21,9 @@ export const metadata: Metadata = {
 
 export default function RootLayout({
   children,
-}: Readonly<{
+}:{
   children: React.ReactNode;
-}>) {
+}) {
   return (
     <html lang="en">
       <body
@@ -32,16 +31,8 @@ export default function RootLayout({
       >
         <SidebarProvider>
           <NavigationSideBar />
-          <div className="flex flex-col flex-1 min-h-screen">
-            <div className="flex items-center justify-between border-b bg-white">
-              <SidebarTrigger className="ml-2" />
-              <Header />
-          </div>
-          <main className="flex-1 bg-slate-50 p-6">
-            {children}
-          </main>
-          </div>
-
+          <SidebarTrigger />
+          {children}
         </SidebarProvider>
       </body>
     </html>
