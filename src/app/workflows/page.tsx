@@ -102,6 +102,7 @@ export default function WorkflowBuilderPage() {
                     className="w-full h-9 px-3 py-2 border border-input rounded-md bg-transparent text-sm shadow-xs focus:outline-none focus:ring-[3px] focus:ring-ring/50 focus:border-ring"
                   >
                     <option value=""disabled hidden>Choose a template</option>
+                    <option value="none">None</option>
                     <option value="invoice">Invoice Approval</option>
                     <option value="contract">Contract Review</option>
                     <option value="po">PO Approval</option>
