@@ -10,15 +10,7 @@ export default function AuditPage() {
     const tableRef = useRef<{ exportToCSV: () => void; exportToPDF?: () => void }>(null);
     const [logs, setLogs] = useState<any[]>([]);
 
-    // 1. Create the State for filters here so it can be shared
-    const [filters, setFilters] = useState({
-        userId: "",
-        action: "",
-        fromDate: "",
-        toDate: ""
-    });
-
-    // 2. Fetch all logs (Initial load or Reset)
+    // 1. Initial Fetch function
     const fetchLogs = () => {
         fetch("http://localhost:8081/admin/logs")
             .then((response) => response.json())    
@@ -28,33 +20,7 @@ export default function AuditPage() {
             .catch((error) => console.error("Error fetching logs:", error));
     };
 
-    // 3. Handle specific filtering
-    const handleApplyFilters = async () => {
-        try {
-            const params = new URLSearchParams();
-            // Only add params if they aren't empty or the default 'all' string
-            if (filters.userId && filters.userId !== "all") params.append("userId", filters.userId);
-            if (filters.action && filters.action !== "all") params.append("action", filters.action);
-            if (filters.fromDate) params.append("fromDate", filters.fromDate);
-            if (filters.toDate) params.append("toDate", filters.toDate);
-
-            const response = await fetch(`http://localhost:8081/admin/logs/filter?${params.toString()}`);
-            const data = await response.json();
-            setLogs(data);
-        } catch (error) {
-            console.error("Error filtering logs:", error);
-        }
-    };
-
-    const handleFilterChange = (name: string, value: string) => {
-        setFilters(prev => ({ ...prev, [name]: value }));
-    };
-
-    const handleClearFilters = () => {
-        setFilters({ userId: "", action: "", fromDate: "", toDate: "" });
-        fetchLogs();
-    };
-
+    // 2. Load logs when page opens
     useEffect(() => {
         fetchLogs();
     }, []);
@@ -67,21 +33,21 @@ export default function AuditPage() {
                     onExportPDF={() => tableRef.current?.exportToPDF && tableRef.current.exportToPDF()} 
                 />
                 
-                {/* 4. Pass the props to the Filter component */}
+                {/* 3. FIXED: AuditFilter now only needs onFilter and onReset.
+                   The filtering logic and state are now INSIDE AuditFilter.tsx 
+                */}
                 <AuditFilter 
-                    filters={filters}
-                    onFilterChange={handleFilterChange}
-                    onApply={handleApplyFilters}
-                    onClear={handleClearFilters}
+                    onFilter={(filteredData) => setLogs(filteredData)} 
+                    onReset={fetchLogs} 
                 /> 
 
+                {/* 4. FIXED: AuditTable only needs the logs and the ref for exporting.
+                */}
                 <AuditTable 
                    ref={tableRef}
                    logs={logs} 
-                   // We keep these here as backups, but the Filter component above handles most of it now
-                   onFilter={(filteredData) => setLogs(filteredData)} 
-                   onReset={handleClearFilters} 
-                 />
+                />
+                
                 <AuditRetention />
             </div>
         </main>
