@@ -5,14 +5,16 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { UploadDocumentDialog } from '@/components/ui/upload-document-dialog';
 import { Plus, Folder, Eye, Download, Edit2, FileText, Loader } from 'lucide-react';
-import { getDocuments, Document } from '@/lib/api-client';
+import { getDocuments, Document, getFolders, Folder as FolderType } from '@/lib/api-client';
 import { useRouter } from 'next/navigation';
 
 export default function DocumentsPage() {
   const router = useRouter();
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [documents, setDocuments] = useState<Document[]>([]);
+  const [folders, setFolders] = useState<FolderType[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
@@ -23,30 +25,36 @@ export default function DocumentsPage() {
       return;
     }
     
-    fetchDocuments();
+    fetchData();
   }, [router]);
   
-  const fetchDocuments = async () => {
+  const fetchData = async () => {
     try {
       setLoading(true);
-      const data = await getDocuments();
-      setDocuments(Array.isArray(data) ? data : []);
+      const [docsData, foldersData] = await Promise.all([
+        getDocuments(),
+        getFolders(),
+      ]);
+      setDocuments(Array.isArray(docsData) ? docsData : []);
+      setFolders(Array.isArray(foldersData) ? foldersData : []);
       setError(null);
     } catch (err) {
-      console.error('Failed to fetch documents:', err);
-      setError('Failed to load documents');
+      console.error('Failed to fetch data:', err);
+      setError('Failed to load documents or folders');
       setDocuments([]);
+      setFolders([]);
     } finally {
       setLoading(false);
     }
   };
 
-  const folders = [
-    { name: 'Invoices', count: 245 },
-    { name: 'Contracts', count: 89 },
-    { name: 'Purchase Orders', count: 156 },
-    { name: 'Quality Certificates', count: 67 },
-  ];
+  // Calculate document count per folder
+  const getFolderDocumentCount = (folderId: string | null) => {
+    if (folderId === null) {
+      return documents.filter(doc => !doc.is_deleted).length;
+    }
+    return documents.filter(doc => doc.folder_id === folderId && !doc.is_deleted).length;
+  };
 
   const formatDate = (dateString: string) => {
     try {
@@ -64,6 +72,21 @@ export default function DocumentsPage() {
     const ext = filename.split('.').pop()?.toUpperCase() || 'FILE';
     return ext;
   };
+
+  // Filter documents based on search query and selected folder
+  const filteredDocuments = documents.filter(doc => {
+    if (doc.is_deleted) return false;
+    
+    if (selectedFolderId !== null && doc.folder_id !== selectedFolderId) {
+      return false;
+    }
+    
+    if (searchQuery && !doc.title.toLowerCase().includes(searchQuery.toLowerCase())) {
+      return false;
+    }
+    
+    return true;
+  });
 
   return (
     <div className="min-h-screen w-full bg-gray-100">
@@ -86,37 +109,76 @@ export default function DocumentsPage() {
         </div>
       </div>
 
-      {/* Main Content with mock data*/}
+      {/* Main Content */}
       <div className="p-6">
         <div className="space-y-6">
-          {/* Folders Section with mock data */}
-          <div className="bg-white rounded-lg shadow-sm p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <Folder className="w-5 h-5" />
-              Folders
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {folders.map((folder) => (
+          {/* Folders Section - Real Data */}
+          {!loading && (
+            <div className="bg-white rounded-lg shadow-sm p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                <Folder className="w-5 h-5" />
+                Folders ({folders.length + 1})
+              </h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                {/* All Documents Folder */}
                 <div
-                  key={folder.name}
-                  className="p-4 border border-gray-200 rounded-lg hover:shadow-md hover:border-gray-300 cursor-pointer transition-all"
+                  onClick={() => setSelectedFolderId(null)}
+                  className={`p-4 rounded-lg cursor-pointer transition-all ${
+                    selectedFolderId === null
+                      ? 'border-2 border-[#953002] bg-amber-50 shadow-md'
+                      : 'border border-gray-200 hover:shadow-md hover:border-gray-300'
+                  }`}
                 >
                   <div className="flex items-start gap-3">
                     <Folder className="w-8 h-8 text-[#953002] flex-shrink-0 mt-1" />
                     <div>
-                      <p className="font-medium text-gray-900">{folder.name}</p>
-                      <p className="text-sm text-gray-600">{folder.count} files</p>
+                      <p className={`font-medium ${
+                        selectedFolderId === null ? 'text-[#953002]' : 'text-gray-900'
+                      }`}>All Documents</p>
+                      <p className="text-sm text-gray-600">
+                        {getFolderDocumentCount(null)} files
+                      </p>
                     </div>
                   </div>
                 </div>
-              ))}
-            </div>
-          </div>
 
-          {/* All Documents Section with mock data */}
+                {/* Individual Folders */}
+                {folders.map((folder) => (
+                  <div
+                    key={folder.folder_id}
+                    onClick={() => setSelectedFolderId(folder.folder_id)}
+                    className={`p-4 rounded-lg cursor-pointer transition-all ${
+                      selectedFolderId === folder.folder_id
+                        ? 'border-2 border-[#953002] bg-amber-50 shadow-md'
+                        : 'border border-gray-200 hover:shadow-md hover:border-gray-300'
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <Folder className="w-8 h-8 text-[#953002] flex-shrink-0 mt-1" />
+                      <div>
+                        <p className={`font-medium ${
+                          selectedFolderId === folder.folder_id ? 'text-[#953002]' : 'text-gray-900'
+                        }`}>{folder.name}</p>
+                        <p className="text-sm text-gray-600">
+                          {getFolderDocumentCount(folder.folder_id)} files
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Documents Section */}
           <div className="bg-white rounded-lg shadow-sm p-6">
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6">
-              <h2 className="text-lg font-semibold text-gray-900">All Documents</h2>
+              <h2 className="text-lg font-semibold text-gray-900">
+                {selectedFolderId !== null 
+                  ? folders.find(f => f.folder_id === selectedFolderId)?.name || 'Documents'
+                  : 'All Documents'
+                }
+              </h2>
               <Input
                 placeholder="Search documents..."
                 value={searchQuery}
@@ -138,7 +200,7 @@ export default function DocumentsPage() {
               <div className="text-center py-12">
                 <p className="text-red-600 font-medium">{error}</p>
                 <button
-                  onClick={fetchDocuments}
+                  onClick={fetchData}
                   className="mt-4 px-4 py-2 bg-[#953002] text-white rounded hover:bg-[#7a2401] transition"
                 >
                   Retry
@@ -147,7 +209,7 @@ export default function DocumentsPage() {
             )}
 
             {/* Empty State */}
-            {!loading && !error && documents.length === 0 && (
+            {!loading && !error && filteredDocuments.length === 0 && (
               <div className="text-center py-12">
                 <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
                 <p className="text-gray-600 font-medium">No documents yet</p>
@@ -156,7 +218,7 @@ export default function DocumentsPage() {
             )}
 
             {/* Documents Table */}
-            {!loading && !error && documents.length > 0 && (
+            {!loading && !error && filteredDocuments.length > 0 && (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="border-b border-gray-200">
@@ -169,13 +231,17 @@ export default function DocumentsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {documents.map((doc) => (
-                      <tr key={doc.document_id} className="border-b border-gray-100 hover:bg-gray-50">
+                    {filteredDocuments.map((doc) => (
+                      <tr 
+                        key={doc.document_id} 
+                        className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer transition-colors"
+                        onClick={() => router.push(`/documents/${doc.document_id}`)}
+                      >
                         <td className="py-3 px-4">
                           <div className="flex items-center gap-2">
                             <FileIcon type={getFileType(doc.title)} />
                             <div>
-                              <p className="font-medium text-gray-900">{doc.title}</p>
+                              <p className="font-medium text-gray-900 hover:text-[#953002]">{doc.title}</p>
                             </div>
                           </div>
                         </td>
@@ -215,6 +281,7 @@ export default function DocumentsPage() {
       <UploadDocumentDialog
         open={uploadDialogOpen}
         onOpenChange={setUploadDialogOpen}
+        onUploadSuccess={fetchData}
       />
     </div>
   );

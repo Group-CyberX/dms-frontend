@@ -218,3 +218,156 @@ export async function addTagToDocument(documentId: string, tagName: string): Pro
 
   return response.json();
 }
+
+/**
+ * Create a new folder
+ */
+export async function createFolder(name: string, parentFolderId?: string, path?: string): Promise<Folder> {
+  const folderData = {
+    name,
+    parent_folder_id: parentFolderId || null,
+    path: path || `/${name}`,
+  };
+
+  const response = await fetch(`${API_BASE_URL}/folders`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeader(),
+    },
+    body: JSON.stringify(folderData),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to create folder: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Get folder by ID
+ */
+export async function getFolder(folderId: string): Promise<Folder> {
+  const response = await fetch(`${API_BASE_URL}/folders/${folderId}`, {
+    headers: getAuthHeader(),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch folder: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Update a folder
+ */
+export async function updateFolder(folderId: string, name: string, parentFolderId?: string, path?: string): Promise<Folder> {
+  const folderData = {
+    name,
+    parent_folder_id: parentFolderId || null,
+    path: path || `/${name}`,
+  };
+
+  const response = await fetch(`${API_BASE_URL}/folders/${folderId}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeader(),
+    },
+    body: JSON.stringify(folderData),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to update folder: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Delete a folder
+ */
+export async function deleteFolder(folderId: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/folders/${folderId}`, {
+    method: 'DELETE',
+    headers: getAuthHeader(),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to delete folder: ${response.statusText}`);
+  }
+}
+
+/**
+ * Upload new document version
+ */
+export async function uploadNewVersion(documentId: string, file: File): Promise<DocumentVersion> {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const response = await fetch(`${API_BASE_URL}/documents/${documentId}/versions/upload`, {
+    method: 'POST',
+    body: formData,
+    headers: getAuthHeader(),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(
+      errorData.message || `Upload failed with status ${response.status}`
+    );
+  }
+
+  return response.json();
+}
+
+/**
+ * Download document version file
+ */
+export async function downloadDocumentVersion(documentId: string, versionId: string): Promise<Blob> {
+  const response = await fetch(
+    `${API_BASE_URL}/documents/${documentId}/versions/${versionId}/download`,
+    {
+      method: 'GET',
+      headers: getAuthHeader(),
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`Failed to download version: ${response.statusText}`);
+  }
+
+  return response.blob();
+}
+
+/**
+ * Restore document version
+ */
+export async function restoreDocumentVersion(documentId: string, versionId: string): Promise<DocumentVersion> {
+  const response = await fetch(`${API_BASE_URL}/documents/${documentId}/versions/${versionId}/restore`, {
+    method: 'POST',
+    headers: getAuthHeader(),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to restore version: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Delete document version
+ */
+export async function deleteDocumentVersion(documentId: string, versionId: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/documents/${documentId}/versions/${versionId}`, {
+    method: 'DELETE',
+    headers: getAuthHeader(),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to delete version: ${response.statusText}`);
+  }
+}
