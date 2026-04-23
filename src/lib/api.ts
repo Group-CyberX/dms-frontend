@@ -4,6 +4,21 @@ const API = axios.create({
   baseURL: "http://localhost:8081/api",
 })
 
+API.interceptors.request.use(
+  (config) => {
+    if (typeof window !== "undefined") {
+      const token = localStorage.getItem("token")
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`
+      }
+    }
+    return config
+  },
+  (error) => {
+    return Promise.reject(error)
+  }
+)
+
 export interface SearchFilters {
   query?: string
   documentType?: string
@@ -49,6 +64,19 @@ export const addMetadata = async (documentId: string, key: string, value: string
     key,
     value
   });
+  return response.data;
+}
+
+export const updateMetadata = async (documentId: string, key: string, value: string) => {
+  const response = await API.put(`/metadata/document/${documentId}/${key}`, {
+    key,
+    value
+  });
+  return response.data;
+}
+
+export const deleteMetadata = async (documentId: string, key: string) => {
+  const response = await API.delete(`/metadata/document/${documentId}/${key}`);
   return response.data;
 }
 
