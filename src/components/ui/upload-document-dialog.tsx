@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useDropzone } from 'react-dropzone';
+import { uploadDocument } from '@/lib/api-client';
 import {
   Dialog,
   DialogContent,
@@ -23,11 +24,13 @@ import { Upload, X } from 'lucide-react';
 interface UploadDocumentDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onUploadSuccess?: () => void | Promise<void>;
 }
 
 export function UploadDocumentDialog({
   open,
   onOpenChange,
+  onUploadSuccess,
 }: UploadDocumentDialogProps) {
   const [files, setFiles] = useState<File[]>([]);
   const [documentName, setDocumentName] = useState('');
@@ -64,60 +67,41 @@ export function UploadDocumentDialog({
 
     setIsUploading(true);
     try {
-      console.log('Preparing to send document to backend...');
-
-      // 1. Create the FormData object
-      const formData = new FormData();
+      console.log('Uploading document...');
       
-      // Attach the first file from the array (since your backend expects a single "file")
-      formData.append('file', files[0]); 
-      
-      // Attach the text fields. 
-      // Make sure these names match the @RequestParam names in your Spring Boot controller!
-      formData.append('title', documentName);
-      formData.append('category', category);
-      if (tags) formData.append('tags', tags);
-      if (description) formData.append('description', description);
-
-      // 2. Send the request to Spring Boot
-      // Note: Make sure the port matches your backend
-      const response = await fetch('http://localhost:8081/api/documents/upload', {
-        method: 'POST',
-        body: formData, 
+      const result = await uploadDocument({
+        file: files[0],
+        title: documentName,
+        category: category,
+        tags: tags || undefined,
+        description: description || undefined,
       });
-
-      // --- NEW ERROR HANDLING ---
-      if (!response.ok) {
-        // Even though it failed, we parse the JSON to get the backend's error message
-        const errorData = await response.json(); 
-        // Throw the specific backend message instead of a generic one
-        throw new Error(errorData.message || 'Upload failed due to a server error.');
-      }
-
-      const data = await response.json();
-      console.log('Upload successful!', data);
-      alert('Upload successful!');
-
-      // 3. Reset form on success
-      setFiles([]);
-      setDocumentName('');
-      setCategory('');
-      setTags('');
-      setDescription('');
-      onOpenChange(false);
       
-    } catch (error) {
+      console.log('Upload successful!', result);
+      alert('Document uploaded successfully!');
+
+      // Reset form on success
+      setFiles([]);
+      setDocumentName('');
+      setCategory('');
+      setTags('');
+      setDescription('');
+      onOpenChange(false);
+      
+      // Refresh documents list if callback provided
+      if (onUploadSuccess) {
+        await onUploadSuccess();
+      }
+      
+    } catch (error) {
       console.error('Upload failed:', error);
       
-      // Check if it's a standard Error object before reading .message
-      const errorMessage = error instanceof Error ? error.message : 'An unknown server error occurred';
-      
-      // Now the alert will show the exact rule they broke!
-      alert(`Upload failed: ${errorMessage}`); 
+      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+      alert(`Upload failed: ${errorMessage}`);
     } finally {
       setIsUploading(false);
     }
-  };
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

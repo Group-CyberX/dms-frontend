@@ -32,6 +32,8 @@ function getNotificationTitle(message: string) {
   if (msg.includes("version")) return "Version Update";
   if (msg.includes("error") || msg.includes("failed")) return "Action Failed";
   if (msg.includes("requires your approval")) return "Action Required";
+  if (msg.includes("New login") || msg.includes("logged in")) return "New Login Detected";
+  if (msg.includes("password") && msg.includes("changed")) return "Password Changed";
   
   return "System Alert"; // Default if no keywords match
 }
@@ -43,7 +45,7 @@ export function Header() {
     const dropdownRef = useRef<HTMLDivElement>(null);
   const testUserId = "0b0f8543-672e-4a5a-bb8d-99da74f94f90";
 
-  // fetch notification from backend
+  // fetch notification from the backend
   useEffect(() => {
     const fetchNotifications = async () => {
       try {
