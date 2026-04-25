@@ -59,11 +59,14 @@ export default function ShareDocumentDialog({
                 return;
             }
 
-            const response = await fetch(SHARE_LINK_ENDPOINT, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
+            const jwt = localStorage.getItem("token"); // ✅ ADD THIS
+
+const response = await fetch(SHARE_LINK_ENDPOINT, {
+    method: "POST",
+    headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${jwt}`, // 🔥 THIS IS THE FIX
+    },
                 body: JSON.stringify({
                     documentId: documentId,
                     accessLevel,
