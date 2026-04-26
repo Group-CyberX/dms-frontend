@@ -19,7 +19,9 @@ export function LoginForm() {
     resolver: zodResolver(loginSchema),
   })
 
-  const onSubmit = async (data: LoginFormValues) => {
+  const setAuth = useAuthStore((state) => state.setAuth);
+
+const onSubmit = async (data: LoginFormValues) => {
   try {
     const res = await fetch("http://localhost:8081/auth/login", {
       method: "POST",
@@ -35,7 +37,7 @@ export function LoginForm() {
 
     const result = await res.json();
 
-    localStorage.setItem("token", result.token);
+    setAuth(result);
 
     router.push("/documents");
 
