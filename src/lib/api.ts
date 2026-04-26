@@ -101,3 +101,52 @@ export const getSearchHistory = async () => {
   const response = await API.get("/search/history");
   return response.data;
 }
+
+export const clearSearchHistory = async () => {
+  const response = await API.delete("/search/history");
+  return response.data;
+}
+
+// ============================================ //
+// TAGS & VERSIONS (Added for Document Details)
+// ============================================ //
+
+export const addTagToDocument = async (documentId: string, tagName: string) => {
+  const response = await API.post(`/tags/document/${documentId}`, null, {
+    params: { tagName }
+  });
+  return response.data;
+}
+
+export const getDocumentVersions = async (documentId: string) => {
+  const response = await API.get(`/documents/${documentId}/versions`);
+  return response.data;
+}
+
+export const uploadNewVersion = async (documentId: string, file: File) => {
+  const formData = new FormData();
+  formData.append("file", file);
+  const response = await API.post(`/documents/${documentId}/versions/upload`, formData, {
+    headers: {
+      "Content-Type": "multipart/form-data",
+    }
+  });
+  return response.data;
+}
+
+export const downloadDocumentVersion = async (documentId: string, versionId: string) => {
+  const response = await API.get(`/documents/${documentId}/versions/${versionId}/download`, {
+    responseType: "blob"
+  });
+  return response.data;
+}
+
+export const restoreDocumentVersion = async (documentId: string, versionId: string) => {
+  const response = await API.post(`/documents/${documentId}/versions/${versionId}/restore`);
+  return response.data;
+}
+
+export const deleteDocumentVersion = async (documentId: string, versionId: string) => {
+  const response = await API.delete(`/documents/${documentId}/versions/${versionId}`);
+  return response.data;
+}

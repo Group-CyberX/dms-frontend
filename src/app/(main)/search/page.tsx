@@ -9,7 +9,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { SearchFilters } from "@/components/ui/search/searchfilter"
 import { useSearchStore, Document } from "@/store/search-store"
 import { FileText, User, Calendar, History, Clock } from "lucide-react"
-import { logSearchResultClick, getSearchHistory } from "@/lib/api"
+import { logSearchResultClick, getSearchHistory, clearSearchHistory } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import {
   Sheet,
@@ -36,6 +36,15 @@ export default function AdvancedSearch() {
       setHistory(data || [])
     } catch (e) {
       console.error("Failed to load search history:", e)
+    }
+  }
+
+  const handleClearHistory = async () => {
+    try {
+      await clearSearchHistory()
+      setHistory([])
+    } catch (e) {
+      console.error("Failed to clear search history:", e)
     }
   }
 
@@ -73,11 +82,16 @@ export default function AdvancedSearch() {
             </Button>
           </SheetTrigger>
           <SheetContent className="overflow-y-auto">
-            <SheetHeader className="mb-6">
-              <SheetTitle>Search History</SheetTitle>
-              <SheetDescription>
-                Recently viewed documents from past searches.
-              </SheetDescription>
+            <SheetHeader className="mb-6 flex flex-row items-center justify-between">
+              <div>
+                <SheetTitle>Search History</SheetTitle>
+                <SheetDescription>
+                  Recently viewed documents from past searches.
+                </SheetDescription>
+              </div>
+              <Button variant="destructive" size="sm" onClick={handleClearHistory} disabled={history.length === 0}>
+                Clear
+              </Button>
             </SheetHeader>
 
             <div className="space-y-4 shadow-none">
@@ -102,11 +116,6 @@ export default function AdvancedSearch() {
                       <p className="text-sm font-medium text-slate-800 truncate">
                         {item.documentTitle || "Untitled Document"}
                       </p>
-                      <div className="flex items-center gap-2 mt-1 text-xs text-slate-500">
-                        <span className="font-semibold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded">
-                          "{item.query}"
-                        </span>
-                      </div>
                       <div className="flex items-center gap-1 mt-1 text-[10px] text-slate-400">
                         <Clock className="w-3 h-3" />
                         {new Date(item.timestamp).toLocaleString()}
