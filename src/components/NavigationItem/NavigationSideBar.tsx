@@ -26,6 +26,7 @@ import {
   Activity,
   Settings,
   LogOut,
+  FolderCog
 } from "lucide-react";
 
 type NavItem = {
@@ -46,6 +47,7 @@ export default function NavigationSideBar() {
     { title: "Recycle Bin", url: "/recycle-bin", icon: <Trash2 size={18} /> },
     { title: "Audit Logs", url: "/audit", icon: <ScrollText size={18} /> },
     { title: "ERP Integration", url: "/erp", icon: <Link2 size={18} /> },
+    { title: "Manage Policies", url: "/policies", icon: <FolderCog size={18} /> },
     { title: "User Management", url: "/users", icon: <Users size={18} /> },
     { title: "Role Management", url: "/roles", icon: <Shield size={18} /> },
     { title: "System Health", url: "/system-health", icon: <Activity size={18} /> },
