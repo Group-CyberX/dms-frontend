@@ -28,6 +28,7 @@ type WorkflowTemplateStep = {
   approverRole?: string;
 };
 
+// Props for the CreateWorkflowTemplateDialog component
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -35,6 +36,7 @@ type Props = {
   onSaved?: () => void;
 };
 
+// Creates a default empty step for a given step number
 const emptyStep = (stepOrder: number): StepApprover => ({
   stepOrder,
   approverUserId: "",
@@ -60,6 +62,7 @@ export default function CreateWorkflowTemplateDialog({
 
   const isEditMode = Boolean(templateId);
 
+  // Safely extract role name from user object
   const getRoleName = (approver: any) => {
     if (typeof approver?.role === "string") {
       return approver.role;
@@ -68,11 +71,13 @@ export default function CreateWorkflowTemplateDialog({
     return approver?.role?.name ?? "";
   };
 
+  // Filter only valid approvers
   const isEligibleApprover = (approver: any) => {
     const roleName = getRoleName(approver).trim().toUpperCase();
     return roleName !== "" && roleName !== "USER";
   };
 
+  // Prevents crash when backend returns empty response
   const safeJson = async (response: Response) => {
     const text = await response.text();
 
@@ -83,6 +88,7 @@ export default function CreateWorkflowTemplateDialog({
     return JSON.parse(text);
   };
 
+  // Reset form fields when dialog closes or new template is created
   const resetForm = () => {
     setName("");
     setDescription("");
@@ -91,10 +97,12 @@ export default function CreateWorkflowTemplateDialog({
     setStepApprovers([emptyStep(1)]);
   };
 
+  // Load existing template data when editing
   const loadTemplate = async (id: number) => {
     setInitialLoading(true);
 
     try {
+      // Fetch template details and steps in parallel
       const [templateResponse, stepsResponse] = await Promise.all([
         fetch(`http://localhost:8081/api/templates/${id}`),
         fetch(`http://localhost:8081/api/templates/${id}/steps`),
@@ -111,6 +119,8 @@ export default function CreateWorkflowTemplateDialog({
       const templateData = await safeJson(templateResponse);
       const stepsData = await safeJson(stepsResponse);
       const parsedSteps = Array.isArray(stepsData) ? stepsData : [];
+      
+      // Map steps by step order
       const templateStepMap = new Map<number, WorkflowTemplateStep>();
 
       parsedSteps.forEach((step: WorkflowTemplateStep) => {
@@ -122,10 +132,13 @@ export default function CreateWorkflowTemplateDialog({
         Number(templateData?.numberOfSteps ?? parsedSteps.length ?? 1) || 1
       );
 
+      // Populate form fields with template data
       setName(templateData?.name ?? "");
       setDescription(templateData?.description ?? "");
       setDocumentType(templateData?.documentType ?? "");
       setNumberOfSteps(resolvedStepCount);
+
+      // Generate step approvers list
       setStepApprovers(
         Array.from({ length: resolvedStepCount }, (_, index) => {
           const stepOrder = index + 1;
@@ -148,6 +161,7 @@ export default function CreateWorkflowTemplateDialog({
     }
   };
 
+  // Fetch folders for document type selection
   useEffect(() => {
     fetch('http://localhost:8081/api/folders')
       .then(async (res) => {
@@ -165,6 +179,7 @@ export default function CreateWorkflowTemplateDialog({
       .catch((err) => console.error(err));
   }, []);
 
+  // Fetch users for approver selection and filter eligible approvers
   useEffect(() => {
     fetch('http://localhost:8081/api/users')
       .then(async (res) => {
@@ -185,11 +200,13 @@ export default function CreateWorkflowTemplateDialog({
       });
   }, []);
 
+  // Load template data when dialog opens in edit mode
   useEffect(() => {
     if (!open) {
       return;
     }
 
+    // If templateId is provided, we are in edit mode and should load the template data
     if (templateId) {
       loadTemplate(templateId);
       return;
@@ -198,6 +215,7 @@ export default function CreateWorkflowTemplateDialog({
     resetForm();
   }, [open, templateId]);
 
+  // Adjust step approvers list when number of steps changes
   useEffect(() => {
     const updated: StepApprover[] = [];
 
@@ -207,16 +225,22 @@ export default function CreateWorkflowTemplateDialog({
     }
 
     setStepApprovers(updated);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [numberOfSteps]);
 
   const handleClose = () => {
     onOpenChange(false);
   };
 
+  // Validate form and send request to backend
   const handleSubmit = async () => {
     if (!name.trim()) {
       alert("Workflow template name is required");
+      return;
+    }
+
+    if (!description.trim()) {
+      alert("Description is required");
       return;
     }
 
@@ -225,6 +249,7 @@ export default function CreateWorkflowTemplateDialog({
       return;
     }
 
+    // Ensure each step has an approver
     const hasEmptyApprover = stepApprovers.some((step) => !String(step.approverUserId ?? "").trim());
 
     if (hasEmptyApprover) {
@@ -239,13 +264,13 @@ export default function CreateWorkflowTemplateDialog({
 
     const uniqueCount = new Set(selectedIds).size;
     if (uniqueCount !== selectedIds.length) {
-      alert("Each step must have a unique approver. Please remove duplicates.");
+      alert("Duplicate approvers are not allowed.");
       return;
     }
 
     const payload = {
-      name,
-      description,
+      name: name.trim(),
+      description: description.trim(),
       documentType,
       numberOfSteps,
       workflowType: "SEQUENTIAL",
@@ -256,7 +281,7 @@ export default function CreateWorkflowTemplateDialog({
 
     try {
       setLoading(true);
-
+      // Send POST request for new template or PUT request for updating existing template
       const response = await fetch(
         templateId ? `http://localhost:8081/api/templates/${templateId}` : 'http://localhost:8081/api/templates',
         {
@@ -287,8 +312,14 @@ export default function CreateWorkflowTemplateDialog({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-4">
-      <div className="w-full max-w-132.5 rounded-2xl bg-white shadow-2xl">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-4"
+      onClick={handleClose}
+    >
+      <div
+        className="w-full max-w-132.5 rounded-2xl bg-white shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-start justify-between px-6 pt-6">
           <div>
             <h2 className="text-[18px] font-semibold text-[#2f2f2f]">
@@ -308,12 +339,14 @@ export default function CreateWorkflowTemplateDialog({
             <X className="h-5 w-5" />
           </button>
         </div>
-
+        
         <div className="px-6 pb-6 pt-6">
           {initialLoading ? (
             <div className="py-10 text-center text-sm text-gray-500">Loading template...</div>
           ) : (
             <div className="space-y-5">
+
+              {/* Template Name */}
               <div>
                 <label className="mb-2 block text-sm font-medium text-[#3b3b3b]">
                   Workflow Template Name <span className="text-[#3b3b3b]">*</span>
@@ -327,9 +360,10 @@ export default function CreateWorkflowTemplateDialog({
                 />
               </div>
 
+              {/* Description */}
               <div>
                 <label className="mb-2 block text-sm font-medium text-[#3b3b3b]">
-                  Description
+                  Description <span className="text-[#3b3b3b]">*</span>
                 </label>
                 <textarea
                   placeholder="Describe the workflow purpose and when it applies"
@@ -340,6 +374,7 @@ export default function CreateWorkflowTemplateDialog({
                 />
               </div>
 
+              {/* Number of Steps */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="mb-2 block text-sm font-medium text-[#3b3b3b]">
@@ -356,6 +391,7 @@ export default function CreateWorkflowTemplateDialog({
                   />
                 </div>
 
+                {/* Document Type Selection */}
                 <div>
                   <label className="mb-2 block text-sm font-medium text-[#3b3b3b]">
                     Document Type <span className="text-[#3b3b3b]">*</span>
@@ -380,6 +416,7 @@ export default function CreateWorkflowTemplateDialog({
                 </div>
               </div>
 
+              {/* Approver Selection for Each Step */}
               <div className="rounded-xl border border-[#e1e1e1] px-5 py-5">
                 <h3 className="text-[16px] font-semibold text-[#3b3b3b]">
                   Approvers for Each Step <span>*</span>
@@ -422,6 +459,7 @@ export default function CreateWorkflowTemplateDialog({
                             Select approver
                           </option>
                           {availableApprovers
+                            // Filter out approvers that are already selected for other steps
                             .filter((approver) => {
                               const otherSelected = stepApprovers
                                 .filter((s) => s.stepOrder !== step.stepOrder)
@@ -442,7 +480,7 @@ export default function CreateWorkflowTemplateDialog({
                   ))}
                 </div>
               </div>
-
+                
               <div className="flex justify-end gap-3 pt-2">
                 <button
                   type="button"
