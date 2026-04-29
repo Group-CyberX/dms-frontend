@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { useRouter } from "next/navigation";
+import { useAuthStore } from "@/store/auth-store";
 
 export function LoginForm() {
 
@@ -39,7 +40,7 @@ const onSubmit = async (data: LoginFormValues) => {
 
     setAuth(result);
 
-    router.push("/documents");
+    router.push("/dashboard");
 
   } catch (error) {
     console.error(error);
