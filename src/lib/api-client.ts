@@ -35,9 +35,12 @@ export interface Document {
   document_id: string;
   title: string;
   owner_id: string;
+  owner_name: string;
   folder_id: string | null;
   current_version_id: string;
   created_at: string;
+  deleted_at?: string;
+  file_size?: number;
   is_locked: boolean;
   is_deleted: boolean;
 }
@@ -370,4 +373,86 @@ export async function deleteDocumentVersion(documentId: string, versionId: strin
   if (!response.ok) {
     throw new Error(`Failed to delete version: ${response.statusText}`);
   }
+}
+
+/**
+ * Delete a document (soft delete - moves to recycle bin)
+ */
+export async function deleteDocument(documentId: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/documents/${documentId}`, {
+    method: 'DELETE',
+    headers: getAuthHeader(),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to delete document: ${response.statusText}`);
+  }
+}
+
+/**
+ * Get all deleted documents (from trash)
+ */
+export async function getDeletedDocuments(): Promise<Document[]> {
+  const response = await fetch(`${API_BASE_URL}/documents/trash`, {
+    headers: getAuthHeader(),
+  });
+  
+  if (!response.ok) {
+    throw new Error(`Failed to fetch deleted documents: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Restore a deleted document
+ */
+export async function restoreDocument(documentId: string): Promise<Document> {
+  const response = await fetch(`${API_BASE_URL}/documents/${documentId}/restore`, {
+    method: 'POST',
+    headers: getAuthHeader(),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to restore document: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Permanently delete a document - For now, same as soft delete
+ * Backend currently only supports soft delete via DELETE endpoint
+ */
+export async function permanentlyDeleteDocument(documentId: string): Promise<void> {
+  // Backend doesn't have a separate permanent delete endpoint yet
+  // Using the soft delete endpoint which moves to trash
+  const response = await fetch(`${API_BASE_URL}/documents/${documentId}`, {
+    method: 'DELETE',
+    headers: getAuthHeader(),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to delete document: ${response.statusText}`);
+  }
+}
+
+/**
+ * Restore multiple documents
+ */
+export async function restoreMultipleDocuments(documentIds: string[]): Promise<void> {
+  // Backend doesn't have batch restore endpoint
+  // Execute restore one by one
+  const restorePromises = documentIds.map(id => restoreDocument(id));
+  await Promise.all(restorePromises);
+}
+
+/**
+ * Permanently delete multiple documents
+ */
+export async function permanentlyDeleteMultipleDocuments(documentIds: string[]): Promise<void> {
+  // Backend doesn't have batch permanent delete endpoint
+  // Execute delete one by one
+  const deletePromises = documentIds.map(id => permanentlyDeleteDocument(id));
+  await Promise.all(deletePromises);
 }
