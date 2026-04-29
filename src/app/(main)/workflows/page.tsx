@@ -6,32 +6,42 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 
+//Represents an approver in the workflow
 interface Approver {
   id: string;
   userId: string;
+  username: string;
+  role: string;
 }
 
 export default function WorkflowBuilderPage() {
   const [documents, setDocuments] = useState<any[]>([]);
   const [templates, setTemplates] = useState<any[]>([]);
   const [folders, setFolders] = useState<any[]>([]);
+
   const [selectedDocument, setSelectedDocument] = useState('');
   const [selectedTemplate, setSelectedTemplate] = useState('');
+
   const [workflowName, setWorkflowName] = useState('');
   const [description, setDescription] = useState("");
   const [documentType, setDocumentType] = useState("");
+  
   const [approvers, setApprovers] = useState<Approver[]>([
-    { id: '1', userId: '' },
-    { id: '2', userId: '' },
-    { id: '3', userId: '' }
+    { id: '1', userId: '', username: '', role: '' }
   ]);
   const [availableApprovers, setAvailableApprovers] = useState<any[]>([]);
+
   const [dueDate, setDueDate] = useState('');
   const [priority, setPriority] = useState('');
+
+  // Option to save workflow as a reusable template
   const [saveAsTemplate, setSaveAsTemplate] = useState(false);
   const [templateName, setTemplateName] = useState('');
+
+  // If a template is selected, lock certain fields and approver selection
   const isTemplateLocked = Boolean(selectedTemplate);
 
+  // Extract role name safely
   const getRoleName = (approver: any) => {
     if (typeof approver?.role === 'string') {
       return approver.role;
@@ -40,6 +50,7 @@ export default function WorkflowBuilderPage() {
     return approver?.role?.name ?? '';
   };
 
+  // Only allow users with a defined role other than 'USER' to be approvers
   const isEligibleApprover = (approver: any) => {
     const roleName = getRoleName(approver).trim().toUpperCase();
     return roleName !== '' && roleName !== 'USER';
@@ -49,6 +60,7 @@ export default function WorkflowBuilderPage() {
 
   const getDocumentFolderId = (document: any) => document?.folder_id ?? document?.folderId ?? '';
 
+  // Determine document type based on its folder
   const getDocumentTypeForDocument = (documentId: string) => {
     const selectedDoc = documents.find((document) => {
       const currentDocumentId = document?.document_id ?? document?.id ?? '';
@@ -59,12 +71,14 @@ export default function WorkflowBuilderPage() {
       return '';
     }
 
+    // Find the folder for the selected document
     const folderId = getDocumentFolderId(selectedDoc);
     const matchedFolder = folders.find((folder) => String(getFolderId(folder)) === String(folderId));
 
     return matchedFolder?.name ?? '';
   };
 
+  // Safely parse JSON, handling empty responses
   const safeJson = async (response: Response) => {
     const text = await response.text();
 
@@ -75,8 +89,8 @@ export default function WorkflowBuilderPage() {
     return JSON.parse(text);
   };
 
-  
-
+  // Fetch documents, templates, folders, and users on component mount
+  // Fetch documents
   useEffect(() => {
     fetch("http://localhost:8081/api/documents")
       .then(async (res) => {
@@ -94,6 +108,7 @@ export default function WorkflowBuilderPage() {
       .catch((err) => console.error(err));
   }, []);
 
+  // Fetch workflow templates
   useEffect(() => {
     fetch('http://localhost:8081/api/templates')
       .then(async (res) => {
@@ -111,6 +126,7 @@ export default function WorkflowBuilderPage() {
       .catch(err => console.error(err));
   }, []);
 
+  // Fetch folders for document type selection
   useEffect(() => {
     fetch('http://localhost:8081/api/folders')
       .then(async (res) => {
@@ -128,6 +144,7 @@ export default function WorkflowBuilderPage() {
       .catch(err => console.error(err));
   }, []);
 
+  // Fetch users and filter eligible approvers
   useEffect(() => {
     fetch("http://localhost:8081/api/users")
       .then(async (res) => {
@@ -155,12 +172,13 @@ export default function WorkflowBuilderPage() {
     const selectedTemplateData = templates.find(
       (template) => String(template.id) === String(templateId)
     );
-
+    // Pre-fill description and document type based on selected template
     if (selectedTemplateData) {
       setDescription(selectedTemplateData.description ?? '');
       setDocumentType(selectedTemplateData.documentType ?? '');
     }
 
+    // If a template is selected, fetch its steps to populate approvers
     if (templateId) {
       try {
         const res = await fetch(`http://localhost:8081/api/templates/${templateId}/steps`);
@@ -175,7 +193,9 @@ export default function WorkflowBuilderPage() {
           setApprovers(
             steps.map((step: any, index: number) => ({
               id: index.toString(),
-              userId: step.approverUserId ?? step.approverRole ?? ''
+              userId: step.approverUserId ?? step.approverRole ?? '',
+              username: step.approverName ?? '',
+              role: step.approverRole ?? ''
             }))
           );
         }
@@ -190,20 +210,32 @@ export default function WorkflowBuilderPage() {
     }
   };
 
+  // Add a new approver step to the workflow
   const addApprover = () => {
     const newId = Date.now().toString();
-    setApprovers([...approvers, { id: newId, userId: '' }]);
+    setApprovers([...approvers, { id: newId, userId: '', username: '', role: '' }]);
   };
 
+  // Remove an approver step by its unique ID, ensuring at least one approver remains
   const removeApprover = (id: string) => {
     if (approvers.length > 1) {
       setApprovers(approvers.filter(approver => approver.id !== id));
     }
   };
 
+  // Update approver selection and ensure no duplicates across steps
   const updateApprover = (id: string, userId: string) => {
+    const selectedApprover = availableApprovers.find((approver) => String(approver.userId) === userId);
+
     setApprovers(approvers.map(approver => 
-      approver.id === id ? { ...approver, userId } : approver
+      approver.id === id
+        ? {
+            ...approver,
+            userId,
+            username: selectedApprover?.username ?? '',
+            role: getRoleName(selectedApprover)
+          }
+        : approver
     ));
   };
 
@@ -214,9 +246,7 @@ export default function WorkflowBuilderPage() {
     setDescription('');
     setDocumentType('');
     setApprovers([
-      { id: '1', userId: '' },
-      { id: '2', userId: '' },
-      { id: '3', userId: '' }
+      { id: '1', userId: '', username: '', role: '' }
     ]);
     setDueDate('');
     setPriority('');
@@ -226,7 +256,8 @@ export default function WorkflowBuilderPage() {
 
   const handleSubmit = async () => {
 
-    if (!selectedDocument || !workflowName || !priority || !dueDate) {
+    // Basic validation
+    if (!selectedDocument || !workflowName || !description || !documentType || !priority || !dueDate) {
       alert("Please fill all required fields");
       return;
     }
@@ -247,7 +278,7 @@ export default function WorkflowBuilderPage() {
       alert("Please enter a template name");
       return;
     }
-    
+    // Prepare request payload
     const payload = {
       documentId: selectedDocument,
       documentType: documentType || getDocumentTypeForDocument(selectedDocument),
@@ -262,6 +293,7 @@ export default function WorkflowBuilderPage() {
       templateName: saveAsTemplate ? templateName.trim() : ""
     };
 
+    // Send workflow creation request to backend
     try {
       const response = await fetch("http://localhost:8081/api/workflows", {
         method: "POST",
@@ -289,6 +321,7 @@ export default function WorkflowBuilderPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 p-8">
+
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-[#8B4513] mb-2">Workflow Builder</h1>
@@ -296,12 +329,15 @@ export default function WorkflowBuilderPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
         {/* Left Column - Create New Workflow */}
         <div className="lg:col-span-2">
           <Card>
+
             <CardHeader>
               <CardTitle>Create New Workflow</CardTitle>
             </CardHeader>
+
             <CardContent>
               <div className="space-y-6">
                 {/* Select Document */}
@@ -419,6 +455,7 @@ export default function WorkflowBuilderPage() {
                   <div className="space-y-3">
                     {approvers.map((approver, index) => (
                       <div key={approver.id} className="flex items-center gap-3">
+
                         {/* Step Number */}
                         <div className="shrink-0 w-8 h-8 bg-[#8B4513] text-white rounded-full flex items-center justify-center font-semibold text-sm">
                           {index + 1}
@@ -551,7 +588,7 @@ export default function WorkflowBuilderPage() {
         </div>
 
         {/* Right Column-Mock Data */}
-        <div className="space-y-6">
+        <div className="space-y-10">
           {/* Workflow Templates */}
           <Card>
             <CardHeader>
@@ -592,19 +629,19 @@ export default function WorkflowBuilderPage() {
               <ul className="space-y-3 text-sm text-muted-foreground">
                 <li className="flex items-start gap-2">
                   <span className="text-[#8B4513] mt-0.5">•</span>
-                  <span>Sequential workflows process approvers one by one</span>
+                  <span>Sequential workflows process approvals step by step in order</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="text-[#8B4513] mt-0.5">•</span>
-                  <span>Parallel workflows send to all approvers simultaneously</span>
+                  <span>Set realistic due dates to avoid delays</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="text-[#8B4513] mt-0.5">•</span>
-                  <span>Set realistic due dates for better compliance</span>
+                  <span>Assign correct roles to the right approvers</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="text-[#8B4513] mt-0.5">•</span>
-                  <span>Add comments to provide context for approvers</span>
+                  <span>Keep workflows simple for better efficiency</span>
                 </li>
               </ul>
             </CardContent>
