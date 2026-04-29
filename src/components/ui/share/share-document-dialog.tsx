@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
     Dialog,
     DialogContent,
@@ -10,12 +10,16 @@ import {
 import { Button } from "@/components/ui/button";
 import { X, Link2, Lock, Calendar, ChevronDown, Eye, EyeOff } from "lucide-react";
 
+// Base API URL from environment
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL!;
+// Share link API endpoint
 const SHARE_LINK_ENDPOINT = `${API_BASE_URL}/api/share-links`;
 const COPY_TIMEOUT_MS = 2000;
 const DEFAULT_EXPIRY_DAYS = 7;
 
 type AccessLevel = "VIEW" | "COMMENT" | "EDIT";
+type AccessLevelValue = AccessLevel | "";
+type ExpiryValue = number | "";
 
 interface ShareDocumentDialogProps {
     open: boolean;
@@ -36,12 +40,15 @@ export default function ShareDocumentDialog({
     documentTitle,
     documentId,
 }: ShareDocumentDialogProps) {
-    const [accessLevel, setAccessLevel] = useState<AccessLevel>("VIEW");
-    const [linkExpiry, setLinkExpiry] = useState<number>(DEFAULT_EXPIRY_DAYS);
+    const [accessLevel, setAccessLevel] = useState<AccessLevelValue>("");
+    const [linkExpiry, setLinkExpiry] = useState<ExpiryValue>("");
     const [copied, setCopied] = useState<boolean>(false);
+
+    // Security options for share link
     const [requireAuth, setRequireAuth] = useState<boolean>(true);
     const [allowDownload, setAllowDownload] = useState<boolean>(false);
     const [allowComments, setAllowComments] = useState<boolean>(true);
+
     const [password, setPassword] = useState<string>("");
     const [showPassword, setShowPassword] = useState<boolean>(false);
     const [generatedLink, setGeneratedLink] = useState<string>("");
@@ -49,6 +56,26 @@ export default function ShareDocumentDialog({
     const [loading, setLoading] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
 
+    // Reset dialog state whenever it is opened or document changes
+    useEffect(() => {
+        if (!open) {
+            return;
+        }
+
+        setAccessLevel("");
+        setLinkExpiry("");
+        setPassword("");
+        setShowPassword(false);
+        setRequireAuth(true);
+        setAllowDownload(false);
+        setAllowComments(false);
+        setCopied(false);
+        setGeneratedLink("");
+        setToken("");
+        setError(null);
+    }, [open, documentId]);
+
+    // Generate a secure share link by sending data to backend
     const handleGenerate = async (): Promise<void> => {
         try {
             setLoading(true);
@@ -59,61 +86,83 @@ export default function ShareDocumentDialog({
                 return;
             }
 
-            const jwt = localStorage.getItem("token"); // ✅ ADD THIS
-
-const response = await fetch(SHARE_LINK_ENDPOINT, {
-    method: "POST",
-    headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${jwt}`, // 🔥 THIS IS THE FIX
-    },
-                body: JSON.stringify({
-                    documentId: documentId,
-                    accessLevel,
-                    expiryDays: linkExpiry,
-                    requireAuth,
-                    allowDownload,
-                    allowComments,
-                    password: password || null,
-                }),
-            });
-
-            if (!response.ok) {
-                const text = await response.text();
-                throw new Error(text || "Failed to generate share link");
+            if (!accessLevel) {
+                setError("Please select an access level");
+                return;
             }
 
-            const data = await response.json();
-            setGeneratedLink(data.url);
+            if (linkExpiry === "") {
+                setError("Please select an expiry date");
+                return;
+            }
 
-            const extractedToken = data.url.split("/").pop() || "";
-            setToken(extractedToken);
-        } catch (err) {
-            const errorMessage = err instanceof Error ? err.message : "An error occurred";
-            setError(errorMessage);
-            console.error("Generate link error:", err);
-        } finally {
-            setLoading(false);
-        }
+            // Trim password to avoid sending empty spaces
+            const normalizedPassword = password.trim();
+
+            // Retrieve JWT token for authenticated API request
+            const jwt = localStorage.getItem("token"); 
+
+    // Send POST request to backend to create share link
+    const response = await fetch(SHARE_LINK_ENDPOINT, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${jwt}`, 
+        },
+                    body: JSON.stringify({
+                        documentId: documentId,
+                        accessLevel,
+                        expiryDays: linkExpiry,
+                        requireAuth,
+                        allowDownload,
+                        allowComments,
+                        password: normalizedPassword ? normalizedPassword : null,
+                    }),
+                });
+
+                if (!response.ok) {
+                    const text = await response.text();
+                    throw new Error(text || "Failed to generate share link");
+                }
+
+                const data = await response.json();
+                setGeneratedLink(data.url);
+
+                // Extract token from URL (assuming it's the last segment)
+                const extractedToken = data.url.split("/").pop() || "";
+                setToken(extractedToken);
+            } catch (err) {
+                const errorMessage = err instanceof Error ? err.message : "An error occurred";
+                setError(errorMessage);
+                console.error("Generate link error:", err);
+            } finally {
+                setLoading(false);
+            }
     };
 
+    // Revoke an existing share link using its token
     const handleRevoke = async (): Promise<void> => {
         try {
+            const jwt = localStorage.getItem("token");
+            // Send DELETE request to backend to revoke share link
             const response = await fetch(
                 `${SHARE_LINK_ENDPOINT}/${token}`,
                 {
                     method: "DELETE",
                     headers: {
                         "Content-Type": "application/json",
+                        ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}),
                     },
                 }
             );
 
             if (!response.ok) {
-                throw new Error("Failed to revoke link");
+                const text = await response.text();
+                throw new Error(text || "Failed to revoke link");
             }
 
             setGeneratedLink("");
+            setToken("");
             setError(null);
         } catch (err) {
             const errorMessage = err instanceof Error ? err.message : "Error revoking link";
@@ -122,6 +171,7 @@ const response = await fetch(SHARE_LINK_ENDPOINT, {
         }
     };
 
+    // Copy the generated share link to clipboard and show feedback
     const handleCopyLink = async (): Promise<void> => {
         try {
             await navigator.clipboard.writeText(generatedLink);
@@ -166,9 +216,18 @@ const response = await fetch(SHARE_LINK_ENDPOINT, {
                         <div className="relative">
                             <select
                                 value={accessLevel}
-                                onChange={(e) => setAccessLevel(e.target.value as AccessLevel)}
+                                onChange={(e) => {
+                                    const selectedAccessLevel = e.target.value as AccessLevelValue;
+
+                                    // Automatically enable comments when "View & Comment" access is selected
+                                    setAccessLevel(selectedAccessLevel);
+                                    setAllowComments(selectedAccessLevel === "COMMENT");
+                                }}
                                 className="w-full px-3 py-2.5 pr-10 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-[#8B4513] appearance-none bg-white"
                             >
+                                <option value="" disabled hidden>
+                                    Select access level
+                                </option>
                                 <option value="VIEW">View Only</option>
                                 <option value="COMMENT">View & Comment</option>
                                 <option value="EDIT">Edit</option>
@@ -186,9 +245,12 @@ const response = await fetch(SHARE_LINK_ENDPOINT, {
                         <div className="relative">
                             <select
                                 value={linkExpiry}
-                                onChange={(e) => setLinkExpiry(Number(e.target.value))}
+                                onChange={(e) => setLinkExpiry(e.target.value === "" ? "" : Number(e.target.value))}
                                 className="w-full px-3 py-2.5 pr-10 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-[#8B4513] appearance-none bg-white"
                             >
+                                <option value="" disabled hidden>
+                                    Select expiry date
+                                </option>
                                 <option value={1}>1 Day</option>
                                 <option value={7}>7 Days</option>
                                 <option value={30}>30 Days</option>
@@ -205,12 +267,22 @@ const response = await fetch(SHARE_LINK_ENDPOINT, {
                         <label className="text-sm font-medium text-gray-800 mb-2 block">
                             Password (optional)
                         </label>
+
+                        {/* Password input with toggle visibility for better user experience */}
                         <div className="relative flex items-center">
                             <input
+                                key={`${documentId}-${open ? "open" : "closed"}`}
                                 type={showPassword ? "text" : "password"}
                                 placeholder="Enter password"
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
+                                name={`share-password-${documentId}`}
+                                autoComplete="new-password"
+                                autoCorrect="off"
+                                autoCapitalize="none"
+                                spellCheck={false}
+                                data-1p-ignore="true"
+                                data-lpignore="true"
                                 className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-[#8B4513]"
                             />
                             <button
@@ -313,6 +385,7 @@ interface ToggleOptionProps {
     onChange: (checked: boolean) => void;
 }
 
+// Reusable toggle component for advanced options (auth, download, comments)
 function ToggleOption({ label, description, checked, onChange }: ToggleOptionProps) {
     return (
         <div className="flex items-start justify-between mb-4 last:mb-0">

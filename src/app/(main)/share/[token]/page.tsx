@@ -1,66 +1,119 @@
 "use client";
 
+import { useEffect } from "react";
 import { useParams } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Download, FileText, Eye, EyeOff } from "lucide-react";
+import { Download, FileText } from "lucide-react";
 
 type ShareAccessResponse = {
   documentId: string;
   allowDownload: boolean;
   allowComments: boolean;
+  documentName?: string;
+};
+
+type ShareComment = {
+  id: string;
+  content: string;
+  createdAt?: string;
 };
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8081";
 
 export default function SharePage() {
   const params = useParams();
+  // Token from URL used to access shared document
   const shareToken = params.token as string;
 
   const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
   const [data, setData] = useState<ShareAccessResponse | null>(null);
   const [comment, setComment] = useState("");
-  const [comments, setComments] = useState<any[]>([]);
+  const [comments, setComments] = useState<ShareComment[]>([]);
   const [documentName, setDocumentName] = useState("Document");
+  // UI states for loading and access control
   const [downloading, setDownloading] = useState(false);
-  
+  const [checkingAccess, setCheckingAccess] = useState(true);
+  const [needsPassword, setNeedsPassword] = useState(false);
+  // States for editing comments
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editText, setEditText] = useState("");
 
-  const handleAccess = async () => {
-    
+  // Helper function to attach JWT token to requests
+  const getAuthHeaders = () => {
     const jwt = localStorage.getItem("token");
+    return jwt ? { Authorization: `Bearer ${jwt}` } : {};
+  };
+  
+  // Check whether user can access the shared document
+  const handleAccess = async (value: string = password) => {
+    setCheckingAccess(true);
+
+    const jwt = localStorage.getItem("token");
+    // Send request to backend to validate access (password / auth)
     const res = await fetch(`${API}/api/share-links/${shareToken}/access`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         ...(jwt && { Authorization: `Bearer ${jwt}` }),
       },
-      body: JSON.stringify({ password }),
+      body: JSON.stringify({ password: value }),
     });
 
+    // Handle access errors (invalid password, expired link, etc.)
     if (!res.ok) {
       const text = await res.text();
-      alert(text || "Access failed");
+      if (text.includes("Password required") || text.includes("Invalid password")) {
+        setNeedsPassword(true);
+      } else {
+        alert(text || "Access failed");
+      }
+      setCheckingAccess(false);
       return;
     }
-
+    // On successful access, load document details and comments if allowed
     const d = await res.json();
     setData(d);
     setDocumentName(d.documentName || "Document");
+    setNeedsPassword(false);
+    setCheckingAccess(false);
 
-
+    // If comments are allowed, load existing comments for the document
     if (d.allowComments) {
       loadComments();
     }
   };
 
+  // Reset state when share token changes
+  useEffect(() => {
+    setPassword("");
+    setData(null);
+    setComments([]);
+    setNeedsPassword(false);
+    setCheckingAccess(true);
+    handleAccess("");
+  }, [shareToken]);
+
+  // Fetch all comments for this shared document
   const loadComments = async () => {
-    const res = await fetch(`${API}/api/comments/${shareToken}`);
-    if (res.ok) {
-      setComments(await res.json());
-    } 
+    const res = await fetch(`${API}/api/comments/${shareToken}`, {
+      headers: {
+        ...getAuthHeaders(),
+      },
+    });
+
+    if (!res.ok) {
+      if (res.status === 401 || res.status === 403) {
+        alert("Please log in again to view comments");
+      }
+      return;
+    }
+
+    const data = await res.json();
+    setComments(Array.isArray(data) ? data : []);
  };
 
+  // Download document if permission is granted
  const handleDownload = async () => {
     if (!data?.allowDownload) {
       alert("Download not allowed");
@@ -82,12 +135,13 @@ export default function SharePage() {
         }
       );
 
+      // Handle download errors (permissions, expired link, etc.)
       if (!res.ok) {
         const text = await res.text();
         alert(text || "Download failed");
         return;
       }
-
+      
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -95,30 +149,31 @@ export default function SharePage() {
       a.download = documentName;
       a.click();
 
-    } catch (error) {
+    } catch {
       alert("Error downloading file");
     } finally {
       setDownloading(false);
     }
   };
 
+  // Add a new comment to the shared document
   const addComment = async () => {
     if (!comment.trim()) {
       alert("Comment cannot be empty");
       return;
     }
-
-    const jwt = localStorage.getItem("token");
+    // Send POST request to backend to create a new comment
     const res = await fetch(`${API}/api/comments/${shareToken}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${jwt}`,
+        ...getAuthHeaders(),
       },
       body: JSON.stringify({ content: comment }),
       
     });
 
+    // Handle errors when adding comment (permissions, validation, etc.)
     if (!res.ok) {
       const text = await res.text();
       alert(text || "Failed to add comment");
@@ -126,18 +181,16 @@ export default function SharePage() {
     }
 
     setComment("");
-    loadComments();
+    await loadComments();
   };
 
-  // Edit comment
+  // Edit an existing comment by its ID
   const editComment = async (id: string, content: string) => {
-    const jwt = localStorage.getItem("token");
-
     const res = await fetch(`${API}/api/comments/${id}`, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${jwt}`,
+        ...getAuthHeaders(),
       },
       body: JSON.stringify({ content }),
     });
@@ -147,17 +200,15 @@ export default function SharePage() {
       return;
     }
 
-    loadComments();
+    await loadComments();
   };
 
-  // Delete comment
+  // Delete a comment by its ID after user confirmation
   const deleteComment = async (id: string) => {
-    const jwt = localStorage.getItem("token");
-
     const res = await fetch(`${API}/api/comments/${id}`, {
       method: "DELETE",
       headers: {
-        Authorization: `Bearer ${jwt}`,
+        ...getAuthHeaders(),
       },
     });
 
@@ -166,11 +217,22 @@ export default function SharePage() {
       return;
     }
 
-    loadComments();
+    await loadComments();
   };
 
-  // Password screen
+  // Show password input if required or access is still checking
   if (!data) {
+  if (checkingAccess && !needsPassword) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-100">
+        <div className="bg-white p-6 rounded-lg shadow-lg w-80">
+          <h2 className="text-lg font-semibold mb-3 text-gray-800">Access Document</h2>
+          <p className="text-sm text-gray-600">Checking link access...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex items-center justify-center min-h-screen bg-gray-100">
       <div className="bg-white p-6 rounded-lg shadow-lg w-80">
@@ -178,23 +240,19 @@ export default function SharePage() {
 
         <div className="relative mb-3">
           <input
-            type={showPassword ? "text" : "password"}
+            type="password"
             className="border border-gray-300 p-2 w-full rounded-md text-sm focus:ring-2 focus:ring-[#953002] focus:border-transparent pr-10"
             placeholder="Enter password"
+            name={`share-access-password-${shareToken}`}
+            autoComplete="new-password"
+            autoCorrect="off"
+            autoCapitalize="none"
+            spellCheck={false}
+            data-1p-ignore="true"
+            data-lpignore="true"
             onChange={(e) => setPassword(e.target.value)}
             onKeyPress={(e) => e.key === "Enter" && handleAccess()}
           />
-          <button
-            type="button"
-            onClick={() => setShowPassword(!showPassword)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
-          >
-            {showPassword ? (
-              <Eye className="w-4 h-4" />
-            ) : (
-              <EyeOff className="w-4 h-4" />
-            )}
-        </button>
         </div>
 
         <Button
@@ -206,9 +264,9 @@ export default function SharePage() {
       </div>
     </div>
   );
-}
+ }
 
-  // Document view
+  // Main document view after access is granted
   return (
     <div className="bg-white min-h-screen">
       {/* Document Header */}
@@ -228,6 +286,7 @@ export default function SharePage() {
 
       {/* Main Content */}
       <div className="max-w-5xl mx-auto px-8 py-8">
+
         {/* Document Preview */}
         <div className="bg-gray-50 rounded-lg p-12 mb-8 border border-gray-200 flex items-center justify-center min-h-96">
           <div className="text-center">
@@ -237,7 +296,7 @@ export default function SharePage() {
           </div>
         </div>
 
-        {/* Comments Section */}
+        {/* Show comments section only if allowed by share settings */}
         {data.allowComments && (
           <div>
             <h2 className="text-2xl font-bold text-gray-800 mb-6">Comments</h2>
@@ -277,18 +336,43 @@ export default function SharePage() {
 
                     {/* ACTION BUTTONS */}
                     <div className="flex gap-2 mt-3">
+                      {/* Edit Button */}
                       <button
                         onClick={() => {
-                          const newContent = prompt("Edit comment:", c.content);
-                          if (newContent) editComment(c.id, newContent);
+                          setEditingId(c.id);
+                          setEditText(c.content);
                         }}
                         className="text-blue-600 text-sm"
                       >
                         Edit
                       </button>
 
+                      {/* Edit Input */}
+                      {editingId === c.id && (
+                        <div className="mt-2">
+                          <input
+                            value={editText}
+                            onChange={(e) => setEditText(e.target.value)}
+                            className="border px-2 py-1 rounded w-full"
+                          />
+                          <button
+                            onClick={() => {
+                              editComment(c.id, editText);
+                              setEditingId(null);
+                            }}
+                            className="text-green-600 text-sm mt-1"
+                          >
+                            Save
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Delete Button */}
                       <button
-                        onClick={() => deleteComment(c.id)}
+                        onClick={() => {
+                          const confirmDelete = confirm("Are you sure you want to delete?");
+                          if (confirmDelete) deleteComment(c.id);
+                        }}
                         className="text-red-600 text-sm"
                       >
                         Delete
