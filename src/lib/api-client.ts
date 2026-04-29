@@ -3,14 +3,33 @@
  * Configure the API_BASE_URL to match your backend server
  */
 
+import { useAuthStore } from "@/store/auth-store";
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081/api';
+const API_ROOT_URL = API_BASE_URL.replace(/\/api\/?$/, "");
+const ADMIN_API_BASE_URL = `${API_ROOT_URL}/admin`;
 
 /**
  * Get authorization header with JWT token
  */
-function getAuthHeader() {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-  return token ? { 'Authorization': `Bearer ${token}` } : {};
+function getAuthHeader(): Record<string, string> {
+  const storeToken = useAuthStore.getState().token;
+  const persistedToken = (() => {
+    if (typeof window === "undefined") return null;
+
+    const rawStore = localStorage.getItem("dms-auth-store");
+    if (!rawStore) return null;
+
+    try {
+      const parsed = JSON.parse(rawStore) as { state?: { token?: string } };
+      return parsed.state?.token ?? null;
+    } catch {
+      return null;
+    }
+  })();
+
+  const token = storeToken || persistedToken || (typeof window !== 'undefined' ? localStorage.getItem('token') : null);
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 export interface DocumentUploadResponse {
@@ -370,4 +389,179 @@ export async function deleteDocumentVersion(documentId: string, versionId: strin
   if (!response.ok) {
     throw new Error(`Failed to delete version: ${response.statusText}`);
   }
+}
+// ================= USER MANAGEMENT =================
+
+export interface User {
+  userId: string;
+  username: string;
+  email: string;
+  role: {
+    roleId: string;
+    name: string;
+    permissions: string;
+  } | null;
+  status: string;
+  createdAt?: string;
+}
+
+export async function getUsers(): Promise<User[]> {
+  const response = await fetch(`${ADMIN_API_BASE_URL}/users`, {
+    headers: getAuthHeader(),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch users: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+export async function createUser(data: {
+  username: string;
+  email: string;
+  password: string;
+  role: string;
+}): Promise<User> {
+  const response = await fetch(`${ADMIN_API_BASE_URL}/users/users`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...getAuthHeader(),
+    },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to create user: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+export async function updateUser(
+  userId: string,
+  data: {
+    username: string;
+    role: string;
+  }
+): Promise<User> {
+  const response = await fetch(`${ADMIN_API_BASE_URL}/users/${userId}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      ...getAuthHeader(),
+    },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to update user: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+export async function updateUserStatus(
+  userId: string,
+  status: string
+): Promise<User> {
+  const response = await fetch(
+    `${ADMIN_API_BASE_URL}/users/${userId}/status`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        ...getAuthHeader(),
+      },
+      body: JSON.stringify({ status }),
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`Failed to update status: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+// ================= ROLE MANAGEMENT =================
+
+export interface Role {
+  roleId: string;
+  name: string;
+  permissions: string;
+}
+
+export async function getRoles(): Promise<Role[]> {
+  const response = await fetch(`${ADMIN_API_BASE_URL}/roles`, {
+    headers: getAuthHeader(),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch roles: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+export async function createRole(data: {
+  name: string;
+  permissions: string;
+}): Promise<Role> {
+  const response = await fetch(`${ADMIN_API_BASE_URL}/roles`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...getAuthHeader(),
+    },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to create role: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+export async function updateRolePermissions(
+  roleId: string,
+  permissions: string,
+  name?: string
+): Promise<Role> {
+  const response = await fetch(`${ADMIN_API_BASE_URL}/roles/${roleId}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      ...getAuthHeader(),
+    },
+    body: JSON.stringify({
+      permissions,
+      ...(name ? { name } : {}),
+    }),
+  });
+
+  if (!response.ok) {
+    let message = response.statusText || "Unknown server error";
+
+    try {
+      const json = await response.json();
+      if (json && typeof json === "object") {
+        message =
+          ("message" in json && typeof json.message === "string" && json.message) ||
+          ("error" in json && typeof json.error === "string" && json.error) ||
+          message;
+      }
+    } catch {
+      const errorText = await response.text().catch(() => "");
+      if (errorText) {
+        message = errorText;
+      }
+    }
+
+    throw new Error(`Failed to update role (${response.status}): ${message}`);
+  }
+
+  return response.json();
 }
