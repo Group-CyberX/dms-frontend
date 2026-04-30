@@ -6,6 +6,7 @@ import { useAuthStore } from '@/store/auth-store';
 import ApproveTaskDialog from '@/components/ui/workflow/approve-task-dialog';
 import RejectTaskDialog from '@/components/ui/workflow/reject-task-dialog';
 
+//Logged-in user details
 type CurrentUser = {
   userId: string;
   username: string;
@@ -29,6 +30,7 @@ type WorkflowInstance = {
   createdByUserId: string;
 };
 
+//Represents a workflow task
 type WorkflowTask = {
   id: number;
   instanceId: number;
@@ -167,11 +169,13 @@ export default function MyTasksPage() {
     try {
       const headers: Record<string, string> = {};
 
+      // Include auth token if available
       if (authToken) {
         headers.Authorization = `Bearer ${authToken}`;
       }
 
       try {
+        // Fetch current user details
         const currentUserResponse = await fetch('http://localhost:8081/api/users/me', {
           headers,
         });
@@ -186,6 +190,7 @@ export default function MyTasksPage() {
         setCurrentUser(null);
       }
 
+      // Fetch approvers, workflows, and documents in parallel
       const [approverResponse, workflowResponse, documentResponse] = await Promise.all([
         fetch('http://localhost:8081/api/users'),
         fetch('http://localhost:8081/api/workflows'),
@@ -212,6 +217,7 @@ export default function MyTasksPage() {
       setWorkflows(Array.isArray(workflowData) ? workflowData : []);
       setDocuments(Array.isArray(documentData) ? documentData : []);
 
+      // Extract unique template IDs from workflows to minimize API calls for steps
       const uniqueTemplateIds = Array.from(
         new Set(
           (Array.isArray(workflowData) ? workflowData : [])
@@ -220,6 +226,7 @@ export default function MyTasksPage() {
         )
       );
 
+      // Fetch steps for each unique template ID in parallel
       const templateStepEntries = await Promise.all(
         uniqueTemplateIds.map(async (templateId) => {
           const stepResponse = await fetch(`http://localhost:8081/api/templates/${templateId}/steps`);
@@ -235,6 +242,7 @@ export default function MyTasksPage() {
 
       setTemplateStepsByTemplateId(Object.fromEntries(templateStepEntries));
 
+      // For each workflow, fetch its tasks and flatten the results
       const workflowTasksNested = await Promise.all(
         (Array.isArray(workflowData) ? workflowData : []).map(async (workflow: WorkflowInstance) => {
           const taskResponse = await fetch(`http://localhost:8081/api/tasks/instance/${workflow.id}`);
@@ -257,10 +265,11 @@ export default function MyTasksPage() {
     }
   };
 
+  // Update auth token from store or localStorage on mount
   useEffect(() => {
     setAuthToken(token ?? localStorage.getItem('token'));
   }, [token]);
-
+  // Load data whenever auth token changes 
   useEffect(() => {
     loadData();
   }, [authToken]);
@@ -268,7 +277,9 @@ export default function MyTasksPage() {
   const taskRows: TaskRow[] = useMemo(() => {
     return tasks
       .map((task) => {
+        // Find the related workflow for this task
         const workflow = workflows.find((item) => item.id === task.instanceId) ?? null;
+        // Find the related document for this workflow
         const document = documents.find(
           (item) => String(item.document_id ?? item.id ?? '') === String(workflow?.documentId ?? '')
         );
@@ -281,11 +292,13 @@ export default function MyTasksPage() {
 
         const assigneeLabel = formatAssigneeLabel(task.userId, approvers, templateStep);
 
+        // Determine if the task is assigned to the current user based on user ID or role
         const isAssignedToMe = currentUser
           ? String(task.userId) === String(currentUser.userId) ||
             normalize(task.userId) === normalize(currentUser.role)
           : true;
 
+        // Determine if the task is overdue
         const dueDate = workflow?.dueDate ? new Date(workflow.dueDate) : null;
         const isOverdue = Boolean(
           dueDate &&
@@ -304,7 +317,10 @@ export default function MyTasksPage() {
           isOverdue,
         };
       })
+      // Show only tasks assigned to current user
       .filter((row) => row.isAssignedToMe)
+
+      // Sort by workflow due date (soonest first)
       .sort((left, right) => {
         const leftWorkflow = left.workflow?.dueDate ? new Date(left.workflow.dueDate).getTime() : 0;
         const rightWorkflow = right.workflow?.dueDate ? new Date(right.workflow.dueDate).getTime() : 0;
@@ -312,12 +328,14 @@ export default function MyTasksPage() {
       });
   }, [approvers, currentUser, documents, tasks, templateStepsByTemplateId, workflows]);
 
+  // Calculate summary counts for each status
   const total = taskRows.length;
   const pending = taskRows.filter((row) => row.task.status.toUpperCase() === 'PENDING').length;
   const approved = taskRows.filter((row) => row.task.status.toUpperCase() === 'APPROVED').length;
   const overdue = taskRows.filter((row) => row.isOverdue).length;
   const rejected = taskRows.filter((row) => row.task.status.toUpperCase() === 'REJECTED').length;
 
+  // Filter displayed rows based on selected status filter
   const displayedRows = useMemo(() => {
     switch (selectedFilter) {
       case 'pending':
@@ -334,6 +352,7 @@ export default function MyTasksPage() {
     }
   }, [taskRows, selectedFilter]);
 
+  // Function to call API for approving/rejecting a task and then refresh data
   const refreshAfterAction = async (taskId: number, action: 'approve' | 'reject', comment: string) => {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -348,7 +367,7 @@ export default function MyTasksPage() {
     if (!response.ok) {
       throw new Error(`Failed to ${action} task`);
     }
-
+    // Reload data after action
     await loadData();
   };
 
@@ -356,7 +375,7 @@ export default function MyTasksPage() {
     if (actionLoading) {
       return;
     }
-
+    
     setActiveTask(null);
     setActionType(null);
   };
@@ -396,6 +415,7 @@ export default function MyTasksPage() {
       <h1 className="mb-2 text-3xl font-bold text-[#8B4513]">My Tasks</h1>
       <p className="mb-6 text-gray-600">Manage your assigned workflow tasks and approvals</p>
 
+      {/* Summary Cards */}
       <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-5">
         <Card
           title="Total Tasks"
@@ -435,6 +455,7 @@ export default function MyTasksPage() {
           {currentUser?.role ? ` (${currentUser.role})` : ''}
         </div>
 
+        {/* Task Table */}
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -452,31 +473,49 @@ export default function MyTasksPage() {
 
             <tbody>
               {displayedRows.map((row) => {
+
+                // Only allow actions if task is pending
                 const canAct = row.task.status.toUpperCase() === 'PENDING';
 
                 return (
                   <tr key={row.task.id} className="border-b hover:bg-gray-50">
+
+                    {/* Document Title */}
                     <td className="p-2">
                       <div className="font-medium text-gray-900">{row.documentTitle}</div>
                     </td>
+
+                    {/* Workflow Name */}
                     <td className="p-2">{row.workflow?.workflowName ?? 'Unknown workflow'}</td>
+
+                    {/* Step Order */}
                     <td className="p-2">Step {row.task.stepOrder}</td>
+
+                    {/* Assignee */}
                     <td className="p-2">{row.assigneeLabel}</td>
+
+                    {/* Status */}
                     <td className="p-2">
                       <span className={`rounded px-2 py-1 text-xs ${statusLabelClass(row.task.status)}`}>
                         {row.task.status}
                       </span>
                     </td>
+
+                    {/* Due Date */}
                     <td className="p-2">
                       <span className={row.isOverdue ? 'font-semibold text-red-600' : 'text-gray-700'}>
                         {row.workflow?.dueDate ?? 'N/A'}
                       </span>
                     </td>
+
+                    {/* Priority */}
                     <td className="p-2">
                       <span className={`rounded px-2 py-1 text-xs ${priorityClass(row.workflow?.priority ?? '')}`}>
                         {row.workflow?.priority ?? 'N/A'}
                       </span>
                     </td>
+
+                    {/* Actions */}
                     <td className="p-2">
                       <div className="flex gap-2">
                         <Button
@@ -536,6 +575,7 @@ export default function MyTasksPage() {
   );
 }
 
+// Reusable card component for summary counts
 function Card({
   title,
   value,
