@@ -50,7 +50,8 @@ export function Header() {
     const fetchNotifications = async () => {
       try {
         const response = await fetch(`http://localhost:8081/api/notifications?userId=${testUserId}`);
-        const data = await response.json();
+        const text = await response.text();
+        const data = text ? JSON.parse(text) : [];
         console.log("NOTIFICATION DATA:", data[0]); // Look at the first notification in the console
         setNotifications(data);
       } catch (error) {
