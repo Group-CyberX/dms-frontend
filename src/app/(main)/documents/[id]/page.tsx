@@ -75,6 +75,7 @@ export default function DocumentDetailsPage() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
 
+  // Handle dropped files and validate max upload size
   const onDrop = (acceptedFiles: File[]) => {
     const validFiles = acceptedFiles.filter(
       (file) => file.size <= 100 * 1024 * 1024
@@ -101,6 +102,7 @@ export default function DocumentDetailsPage() {
     },
   });
 
+  // Fetch document details, tags, and versions
   const fetchData = async () => {
     try {
       setLoading(true);
@@ -133,6 +135,7 @@ export default function DocumentDetailsPage() {
     }
   }, [documentId]);
 
+  // Update an existing metadata value
   const handleUpdateMeta = async (key: string) => {
     try {
       await updateMetadata(documentId, key, editValue);
@@ -144,6 +147,7 @@ export default function DocumentDetailsPage() {
     }
   };
 
+  // Delete a metadata entry by key
   const handleDeleteMeta = async (key: string) => {
     if (!confirm("Are you sure you want to delete this metadata?")) return;
     try {
@@ -155,6 +159,7 @@ export default function DocumentDetailsPage() {
     }
   };
 
+  // Add a new metadata key-value pair
   const handleAddMeta = async () => {
     if (!newKey.trim() || !newValue.trim()) {
       alert("Key and Value are required");
@@ -172,6 +177,7 @@ export default function DocumentDetailsPage() {
     }
   };
 
+  // Add a new tag to the current document
   const handleAddTag = async () => {
     if (!newTagInput.trim() || !doc) return;
 
@@ -191,6 +197,7 @@ export default function DocumentDetailsPage() {
     }
   };
 
+  // Upload a new document version file
   const handleUploadNewVersion = async () => {
     if (!newVersionFile || !doc) return;
 
@@ -214,6 +221,7 @@ export default function DocumentDetailsPage() {
     }
   };
 
+  // Download a specific document version
   const handleDownloadVersion = async (versionId: string) => {
     if (!doc) return;
 
@@ -236,6 +244,7 @@ export default function DocumentDetailsPage() {
     }
   };
 
+  // Restore a selected version as the current version
   const handleRestoreVersion = async (versionId: string) => {
     if (!doc || versionId === doc.current_version_id) return;
 
@@ -253,6 +262,7 @@ export default function DocumentDetailsPage() {
     }
   };
 
+  // Delete a selected document version
   const handleDeleteVersion = async (versionId: string) => {
     if (!doc) return;
 
@@ -276,6 +286,7 @@ export default function DocumentDetailsPage() {
     }
   };
 
+  // Format date strings for version history display
   const formatDateTime = (dateString: string): string => {
     try {
       const date = new Date(dateString);

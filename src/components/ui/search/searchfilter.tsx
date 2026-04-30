@@ -19,6 +19,7 @@ export function SearchFilters() {
   const { filters, setFilters, setResults, clearFilters } = useSearchStore()
   const [loading, setLoading] = React.useState(false)
 
+  // Run search using current filter values
   const handleSearch = async () => {
     try {
       setLoading(true)
@@ -31,10 +32,12 @@ export function SearchFilters() {
     }
   }
 
+  // Update a specific filter field in store state
   const handleFilterChange = (key: string, value: string) => {
     setFilters({ [key]: value } as any)
   }
 
+  // Reset all filter fields and clear current results
   const handleClear = () => {
     clearFilters()
   }

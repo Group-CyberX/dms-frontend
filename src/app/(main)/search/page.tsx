@@ -30,6 +30,7 @@ export default function AdvancedSearch() {
   const [history, setHistory] = React.useState<any[]>([])
   const [isHistoryOpen, setIsHistoryOpen] = React.useState(false)
 
+  // Load search history entries from the backend
   const fetchHistory = async () => {
     try {
       const data = await getSearchHistory()
@@ -39,6 +40,7 @@ export default function AdvancedSearch() {
     }
   }
 
+  // Clear all saved search history entries
   const handleClearHistory = async () => {
     try {
       await clearSearchHistory()
@@ -48,6 +50,7 @@ export default function AdvancedSearch() {
     }
   }
 
+  // Log selected result and navigate to the document details page
   const handleClick = (id: string) => {
     // Log the click event to the backend before navigating
     // Pass the active text search query or fallback if empty
@@ -89,7 +92,7 @@ export default function AdvancedSearch() {
                   Recently viewed documents from past searches.
                 </SheetDescription>
               </div>
-              <Button variant="destructive" size="sm" onClick={handleClearHistory} disabled={history.length === 0}>
+              <Button variant="outline"  size="sm" onClick={handleClearHistory} disabled={history.length === 0} className="bg-red">
                 Clear
               </Button>
             </SheetHeader>

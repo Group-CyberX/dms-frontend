@@ -6,7 +6,8 @@ import { loginSchema, LoginFormValues } from "@/lib/schemas/login-schema"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
-import { useRouter } from "next/navigation";
+import { useRouter } from "next/navigation"
+import { useAuthStore } from "@/store/auth-store";
 
 export function LoginForm() {
 
