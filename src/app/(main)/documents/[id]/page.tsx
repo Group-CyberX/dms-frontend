@@ -5,8 +5,10 @@ import { useParams, useRouter } from 'next/navigation';
 import { useDropzone } from 'react-dropzone';
 import { Button } from '@/components/ui/button';
 import { getDocument, getDocumentVersions, Document, DocumentVersion, getDocumentTags, addTagToDocument, Tag, uploadNewVersion, downloadDocumentVersion, restoreDocumentVersion, deleteDocumentVersion } from '@/lib/api-client';
+import  ShareDocumentDialog  from '@/components/ui/share/share-document-dialog';
 import {
   ArrowLeft,
+  Share2,
   Download,
   Lock,
   FileText,
@@ -33,6 +35,7 @@ export default function DocumentDetailPage() {
   const [newTagInput, setNewTagInput] = useState('');
   const [addingTag, setAddingTag] = useState(false);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [newVersionFile, setNewVersionFile] = useState<File | null>(null);
   const [uploadingVersion, setUploadingVersion] = useState(false);
   const [downloadingVersionId, setDownloadingVersionId] = useState<string | null>(null);
@@ -289,6 +292,14 @@ export default function DocumentDetailPage() {
           <div className="flex items-center justify-between">
             <h1 className="text-3xl font-bold text-gray-900">{document.title}</h1>
             <div className="flex gap-3">
+              <div className="flex gap-3">
+              <Button 
+                className="bg-[#953002] hover:bg-[#7a2401] text-white"
+                onClick={() => setShareDialogOpen(true)}
+              >
+                <Share2 className="w-4 h-4 mr-2" />
+                Share
+              </Button>
               <Button 
                 className="bg-[#953002] hover:bg-[#7a2401] text-white"
                 onClick={() => document.current_version_id && handleDownloadVersion(document.current_version_id)}
@@ -303,6 +314,7 @@ export default function DocumentDetailPage() {
                 <Upload className="w-4 h-4 mr-2" />
                 New Version
               </Button>
+              </div>
             </div>
           </div>
         </div>
@@ -597,6 +609,14 @@ export default function DocumentDetailPage() {
           <p className="text-sm text-green-700">{uploadSuccess}</p>
         </div>
       )}
+
+      {/* Share Document Dialog */}
+      <ShareDocumentDialog
+        open={shareDialogOpen}
+        onOpenChange={setShareDialogOpen}
+        documentTitle={document?.title || ""}
+        documentId={document?.document_id || ""}
+      />
     </div>
   );
 }
