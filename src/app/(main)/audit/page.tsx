@@ -5,22 +5,26 @@ import AuditHeader from "@/components/ui/audit/audit-header";
 import AuditFilter from "@/components/ui/audit/audit-filters";
 import AuditTable from "@/components/ui/audit/audit-table";
 import AuditRetention from "@/components/ui/audit/audit-retention";
+import { API_BASE_URL, AUDIT_CONFIG } from "@/lib/constants";
+import { auditService } from "@/lib/auditService";
 
 export default function AuditPage() {
     const tableRef = useRef<{ exportToCSV: () => void; exportToPDF?: () => void }>(null);
     const [logs, setLogs] = useState<any[]>([]);
 
-    // 1. Initial Fetch function
-    const fetchLogs = () => {
-        fetch("http://localhost:8081/admin/logs")
-            .then((response) => response.json())    
-            .then((data) => {
-                setLogs(data);
-            })
-            .catch((error) => console.error("Error fetching logs:", error));
-    };
+    //Initial Fetch function
+const fetchLogs = async () => {
+    try {
+        // The component no longer cares about URLs or response statuses
+        const data = await auditService.getLogs();
+        setLogs(data);
+    } catch (error) {
+        console.error("Failed to load audit logs:", error);
+        setLogs([]); 
+    }
+};
 
-    // 2. Load logs when page opens
+    //Load logs when page opens
     useEffect(() => {
         fetchLogs();
     }, []);
@@ -33,7 +37,7 @@ export default function AuditPage() {
                     onExportPDF={() => tableRef.current?.exportToPDF && tableRef.current.exportToPDF()} 
                 />
                 
-                {/* 3. FIXED: AuditFilter now only needs onFilter and onReset.
+                {/*AuditFilter now only needs onFilter and onReset.
                    The filtering logic and state are now INSIDE AuditFilter.tsx 
                 */}
                 <AuditFilter 
@@ -41,7 +45,7 @@ export default function AuditPage() {
                     onReset={fetchLogs} 
                 /> 
 
-                {/* 4. FIXED: AuditTable only needs the logs and the ref for exporting.
+                {/*AuditTable only needs the logs and the ref for exporting.
                 */}
                 <AuditTable 
                    ref={tableRef}
