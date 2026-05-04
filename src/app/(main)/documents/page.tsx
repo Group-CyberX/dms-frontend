@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { UploadDocumentDialog } from '@/components/ui/upload-document-dialog';
-import { Plus, Folder, Eye, Download, Edit2, FileText, Loader, Trash2 } from 'lucide-react';
+import { Plus, Folder, Eye, Download, Edit2, FileText, Loader, Trash2, Share2 } from 'lucide-react';
 import { getDocuments, Document, getFolders, Folder as FolderType, deleteDocument } from '@/lib/api-client';
 import { useRouter } from 'next/navigation';
 
@@ -288,6 +288,9 @@ export default function DocumentsPage() {
                               }}
                             >
                               <Trash2 className="w-4 h-4 text-red-600" />
+                            </button>
+                            <button className="p-1 hover:bg-gray-200 rounded transition" title="Share">
+                              <Share2 className="w-4 h-4 text-gray-600" />
                             </button>
                           </div>
                         </td>

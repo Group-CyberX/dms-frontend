@@ -1,13 +1,23 @@
 import { create } from "zustand";
 
+interface AuthData {
+  token: string;
+  email: string;
+  role: string;
+  userId?: string;
+  userName?: string;
+  permissions?: Record<string, boolean>;
+}
+
 interface AuthState {
   token: string | null;
   email: string | null;
   role: string | null;
   userId: string | null;
   userName: string | null;
+  permissions: Record<string, boolean>;
 
-  setAuth: (token: string, email: string, role: string, userId?: string, userName?: string) => void;
+  setAuth: (data: AuthData) => void;
   logout: () => void;
 }
 
@@ -17,16 +27,18 @@ export const useAuthStore = create<AuthState>((set) => ({
   role: null,
   userId: null,
   userName: null,
+  permissions: {},
 
-  setAuth: (token, email, role, userId, userName) => {
-    localStorage.setItem("token", token);
+  setAuth: (data) => {
+    localStorage.setItem("token", data.token);
 
     set({
-      token,
-      email,
-      role,
-      userId: userId || null,
-      userName: userName || null,
+      token: data.token,
+      email: data.email,
+      role: data.role,
+      userId: data.userId || null,
+      userName: data.userName || null,
+      permissions: data.permissions || {},
     });
   },
 
@@ -39,6 +51,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       role: null,
       userId: null,
       userName: null,
+      permissions: {},
     });
   },
 }));

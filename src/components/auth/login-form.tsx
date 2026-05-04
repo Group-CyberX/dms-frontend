@@ -6,7 +6,8 @@ import { loginSchema, LoginFormValues } from "@/lib/schemas/login-schema"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
-import { useRouter } from "next/navigation";
+import { useRouter } from "next/navigation"
+import { useAuthStore } from "@/store/auth-store"
 
 export function LoginForm() {
 
@@ -19,7 +20,9 @@ export function LoginForm() {
     resolver: zodResolver(loginSchema),
   })
 
-  const onSubmit = async (data: LoginFormValues) => {
+  const setAuth = useAuthStore((state) => state.setAuth);
+
+const onSubmit = async (data: LoginFormValues) => {
   try {
     const res = await fetch("http://localhost:8081/auth/login", {
       method: "POST",
@@ -35,7 +38,7 @@ export function LoginForm() {
 
     const result = await res.json();
 
-    localStorage.setItem("token", result.token);
+    setAuth(result);
 
     router.push("/documents");
 
