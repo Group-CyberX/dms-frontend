@@ -25,6 +25,7 @@ export default function WorkflowBuilderPage() {
   const [workflowName, setWorkflowName] = useState('');
   const [description, setDescription] = useState("");
   const [documentType, setDocumentType] = useState("");
+  const [workflowType, setWorkflowType] = useState<'SEQUENTIAL' | 'PARALLEL' | ''>('');
   
   const [approvers, setApprovers] = useState<Approver[]>([
     { id: '1', userId: '', username: '', role: '' }
@@ -176,6 +177,7 @@ export default function WorkflowBuilderPage() {
     if (selectedTemplateData) {
       setDescription(selectedTemplateData.description ?? '');
       setDocumentType(selectedTemplateData.documentType ?? '');
+      setWorkflowType(selectedTemplateData.workflowType ?? '');
     }
 
     // If a template is selected, fetch its steps to populate approvers
@@ -207,6 +209,7 @@ export default function WorkflowBuilderPage() {
       setWorkflowName('');
       setDescription('');
       setDocumentType('');
+      setWorkflowType('');
     }
   };
 
@@ -262,6 +265,11 @@ export default function WorkflowBuilderPage() {
       return;
     }
 
+    if (!workflowType) {
+      alert('Please select a workflow type');
+      return;
+    }
+
     if (!selectedTemplate && approvers.length === 0) {
       alert("Add at least one approver");
       return;
@@ -285,6 +293,7 @@ export default function WorkflowBuilderPage() {
       templateId: selectedTemplate || null,
       workflowName,
       description,
+      workflowType,
       priority,
       dueDate,
       approvers: approvers.map(a => a.userId),
@@ -431,6 +440,26 @@ export default function WorkflowBuilderPage() {
                     <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
                   </div>
               </div>
+
+                {/* Workflow Type */}
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-[#3b3b3b]">Workflow Type</label>
+                  <div className="relative w-48">
+                    <select
+                      value={workflowType}
+                      onChange={(e) => setWorkflowType(e.target.value as 'SEQUENTIAL' | 'PARALLEL' | '')}
+                      disabled={isTemplateLocked}
+                      className="w-full h-9 px-3 py-2 border border-input rounded-md bg-transparent text-sm shadow-xs focus:outline-none focus:ring-[3px] focus:ring-ring/50 focus:border-ring appearance-none"
+                    >
+                      <option value="" disabled hidden>
+                        Select workflow type
+                      </option>
+                      <option value="SEQUENTIAL">Sequential</option>
+                      <option value="PARALLEL">Parallel</option>
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+                  </div>
+                </div>
             
 
                 {/* Approval Chain */}
@@ -630,6 +659,10 @@ export default function WorkflowBuilderPage() {
                 <li className="flex items-start gap-2">
                   <span className="text-[#8B4513] mt-0.5">•</span>
                   <span>Sequential workflows process approvals step by step in order</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-[#8B4513] mt-0.5">•</span>
+                  <span>Parallel workflows allow all approvers to act at the same time</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="text-[#8B4513] mt-0.5">•</span>

@@ -295,6 +295,11 @@ export default function PoliciesPage() {
                   <p className="mt-1 text-xs text-gray-400">
                     {row.template.documentType || 'Unknown document type'}
                   </p>
+                  <div className="mt-2">
+                    <span className="rounded bg-gray-100 px-2 py-1 text-xs text-gray-700">
+                      {row.template.workflowType ?? 'SEQUENTIAL'}
+                    </span>
+                  </div>
                 </div>
 
                 <div>

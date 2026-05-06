@@ -55,6 +55,7 @@ export default function CreateWorkflowTemplateDialog({
   const [description, setDescription] = useState("");
   const [numberOfSteps, setNumberOfSteps] = useState(1);
   const [documentType, setDocumentType] = useState("");
+  const [workflowType, setWorkflowType] = useState<'SEQUENTIAL' | 'PARALLEL'>('SEQUENTIAL');
   const [stepApprovers, setStepApprovers] = useState<StepApprover[]>([emptyStep(1)]);
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(false);
@@ -94,6 +95,7 @@ export default function CreateWorkflowTemplateDialog({
     setDescription("");
     setNumberOfSteps(1);
     setDocumentType("");
+    setWorkflowType('SEQUENTIAL');
     setStepApprovers([emptyStep(1)]);
   };
 
@@ -136,6 +138,7 @@ export default function CreateWorkflowTemplateDialog({
       setName(templateData?.name ?? "");
       setDescription(templateData?.description ?? "");
       setDocumentType(templateData?.documentType ?? "");
+      setWorkflowType(templateData?.workflowType ?? 'SEQUENTIAL');
       setNumberOfSteps(resolvedStepCount);
 
       // Generate step approvers list
@@ -273,7 +276,7 @@ export default function CreateWorkflowTemplateDialog({
       description: description.trim(),
       documentType,
       numberOfSteps,
-      workflowType: "SEQUENTIAL",
+      workflowType,
       createdBy: "DOC ADMIN",
       systemTemplate: true,
       stepApprovers,
@@ -413,6 +416,25 @@ export default function CreateWorkflowTemplateDialog({
                     </select>
                     <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
                   </div>
+                </div>
+              </div>
+
+              {/* Workflow Type Selection */}
+              <div>
+                <label className="mb-2 block text-sm font-medium text-[#3b3b3b]">Workflow Type <span className="text-[#3b3b3b]">*</span></label>
+                <div className="relative w-48">
+                  <select
+                    value={workflowType}
+                    onChange={(e) => setWorkflowType(e.target.value as 'SEQUENTIAL' | 'PARALLEL')}
+                    className="w-full h-9 px-3 py-2 border border-input rounded-md bg-transparent text-sm shadow-xs focus:outline-none focus:ring-[3px] focus:ring-ring/50 focus:border-ring appearance-none"
+                  >
+                    <option value="" disabled hidden>
+                      Select workflow type
+                    </option>
+                    <option value="SEQUENTIAL">Sequential</option>
+                    <option value="PARALLEL">Parallel</option>
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
                 </div>
               </div>
 
