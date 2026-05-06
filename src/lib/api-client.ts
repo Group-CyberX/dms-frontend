@@ -165,6 +165,32 @@ export interface DocumentVersion {
   created_at: string;
 }
 
+export interface WorkflowInstance {
+  id: number;
+  documentId?: string;
+  document_id?: string;
+  templateId?: number | null;
+  workflowName?: string;
+  priority?: string;
+  dueDate?: string;
+  status?: string;
+}
+
+/**
+ * Get all workflow instances
+ */
+export async function getWorkflows(): Promise<WorkflowInstance[]> {
+  const response = await fetch(`${API_BASE_URL}/workflows`, {
+    headers: getAuthHeader(),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch workflows: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
 /**
  * Get all versions of a document
  */
