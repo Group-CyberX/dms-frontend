@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuthStore } from "@/store/auth-store";
 import { formatRoleLabel, getDashboardVariant } from "@/lib/access-control";
+import { getUsers } from "@/lib/api-client";
 import { CheckCircle2, FileText, Bell, Server, ClipboardCheck, ShieldCheck } from "lucide-react";
 
 type StatCardProps = {
@@ -34,6 +35,23 @@ export default function DashboardPage() {
   const router = useRouter();
   const role = useAuthStore((state) => state.role);
   const variant = getDashboardVariant(role);
+  const [userCount, setUserCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    const fetchUserCount = async () => {
+      try {
+        const users = await getUsers();
+        setUserCount(Array.isArray(users) ? users.length : 0);
+      } catch (error) {
+        console.error("Failed to fetch user count:", error);
+        setUserCount(null);
+      }
+    };
+
+    if (variant === "system-admin") {
+      fetchUserCount();
+    }
+  }, [variant]);
 
   const title = useMemo(() => {
     if (variant === "system-admin") return "System Administrator Dashboard";
@@ -50,17 +68,17 @@ export default function DashboardPage() {
     <div className="-m-6 min-h-[calc(100vh-4rem)] bg-[#e2e2e2] px-6 py-6 md:px-8 md:py-8">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
         <section>
-          <h1 className="text-4xl font-semibold tracking-tight text-[#953002]">{title}</h1>
+          <h1 className="text-4xl font-semibold tracking-tight text-[#7f2600]">{title}</h1>
           <p className="mt-2 text-sm text-slate-600">{subtitle}</p>
         </section>
 
         {variant === "system-admin" && (
           <>
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <StatCard title="Total Users" value="247" note="+12 this month" icon={<ShieldCheck className="h-6 w-6" />} />
-              <StatCard title="System Health" value="98.5%" note="Uptime" icon={<Server className="h-6 w-6" />} />
-              <StatCard title="ERP Connections" value="12" note="3 active syncs" icon={<CheckCircle2 className="h-6 w-6" />} />
-              <StatCard title="Notifications" value="9" note="Requires attention" icon={<Bell className="h-6 w-6" />} />
+              <StatCard title="Total Users" value={userCount === null ? "null" : String(userCount)} note="Live from API" icon={<ShieldCheck className="h-6 w-6" />} />
+              <StatCard title="System Health" value="0" note="Placeholder" icon={<Server className="h-6 w-6" />} />
+              <StatCard title="ERP Connections" value="0" note="Placeholder" icon={<CheckCircle2 className="h-6 w-6" />} />
+              <StatCard title="Notifications" value="0" note="Placeholder" icon={<Bell className="h-6 w-6" />} />
             </div>
 
             <Card className="border-0 bg-white shadow-[0_10px_24px_rgba(15,23,42,0.08)]">
@@ -80,10 +98,10 @@ export default function DashboardPage() {
         {variant === "document-admin" && (
           <>
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <StatCard title="Total Documents" value="1,247" note="+45 this week" icon={<FileText className="h-6 w-6" />} />
-              <StatCard title="Policy Violations" value="8" note="Requires action" icon={<Bell className="h-6 w-6" />} />
-              <StatCard title="Retention Review" value="34" note="Due this month" icon={<ClipboardCheck className="h-6 w-6" />} />
-              <StatCard title="Archived Docs" value="3,892" note="Last 6 months" icon={<CheckCircle2 className="h-6 w-6" />} />
+              <StatCard title="Total Documents" value="0" note="Placeholder" icon={<FileText className="h-6 w-6" />} />
+              <StatCard title="Policy Violations" value="0" note="Placeholder" icon={<Bell className="h-6 w-6" />} />
+              <StatCard title="Retention Review" value="0" note="Placeholder" icon={<ClipboardCheck className="h-6 w-6" />} />
+              <StatCard title="Archived Docs" value="0" note="Placeholder" icon={<CheckCircle2 className="h-6 w-6" />} />
             </div>
             <Card className="border-0 bg-white shadow-[0_10px_24px_rgba(15,23,42,0.08)]">
               <CardHeader>
@@ -101,10 +119,10 @@ export default function DashboardPage() {
         {(variant === "process-owner" || variant === "approver") && (
           <>
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <StatCard title="Pending Approvals" value="12" note="Needs review" icon={<ClipboardCheck className="h-6 w-6" />} />
-              <StatCard title="Active Workflows" value="28" note="In progress" icon={<CheckCircle2 className="h-6 w-6" />} />
-              <StatCard title="Under Review" value="15" note="Documents" icon={<FileText className="h-6 w-6" />} />
-              <StatCard title="Notifications" value="6" note="Action required" icon={<Bell className="h-6 w-6" />} />
+              <StatCard title="Pending Approvals" value="0" note="Placeholder" icon={<ClipboardCheck className="h-6 w-6" />} />
+              <StatCard title="Active Workflows" value="0" note="Placeholder" icon={<CheckCircle2 className="h-6 w-6" />} />
+              <StatCard title="Under Review" value="0" note="Placeholder" icon={<FileText className="h-6 w-6" />} />
+              <StatCard title="Notifications" value="0" note="Placeholder" icon={<Bell className="h-6 w-6" />} />
             </div>
             <Card className="border-0 bg-white shadow-[0_10px_24px_rgba(15,23,42,0.08)]">
               <CardHeader>
@@ -121,9 +139,9 @@ export default function DashboardPage() {
         {variant === "auditor" && (
           <>
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              <StatCard title="Audit Events" value="1,532" note="Last 30 days" icon={<ClipboardCheck className="h-6 w-6" />} />
-              <StatCard title="Flagged Items" value="23" note="Needs review" icon={<Bell className="h-6 w-6" />} />
-              <StatCard title="Completed Reviews" value="88" note="This month" icon={<CheckCircle2 className="h-6 w-6" />} />
+              <StatCard title="Audit Events" value="0" note="Placeholder" icon={<ClipboardCheck className="h-6 w-6" />} />
+              <StatCard title="Flagged Items" value="0" note="Placeholder" icon={<Bell className="h-6 w-6" />} />
+              <StatCard title="Completed Reviews" value="0" note="Placeholder" icon={<CheckCircle2 className="h-6 w-6" />} />
             </div>
             <Card className="border-0 bg-white shadow-[0_10px_24px_rgba(15,23,42,0.08)]">
               <CardHeader>
@@ -140,9 +158,9 @@ export default function DashboardPage() {
         {variant === "end-user" && (
           <>
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              <StatCard title="My Documents" value="24" note="Updated this week" icon={<FileText className="h-6 w-6" />} />
-              <StatCard title="Submitted Workflows" value="8" note="In progress" icon={<ClipboardCheck className="h-6 w-6" />} />
-              <StatCard title="Notifications" value="5" note="Unread" icon={<Bell className="h-6 w-6" />} />
+              <StatCard title="My Documents" value="0" note="Placeholder" icon={<FileText className="h-6 w-6" />} />
+              <StatCard title="Submitted Workflows" value="0" note="Placeholder" icon={<ClipboardCheck className="h-6 w-6" />} />
+              <StatCard title="Notifications" value="0" note="Placeholder" icon={<Bell className="h-6 w-6" />} />
             </div>
             <Card className="border-0 bg-white shadow-[0_10px_24px_rgba(15,23,42,0.08)]">
               <CardHeader>

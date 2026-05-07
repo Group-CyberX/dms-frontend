@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useLayoutEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import NavigationSideBar from "@/components/NavigationItem/NavigationSideBar";
@@ -62,7 +62,7 @@ export default function MainLayout({
   const router = useRouter();
   const pathname = usePathname();
 
-  const token = useAuthStore((state) => state.token);
+  const token = useAuthStore((state) => state.accessToken);
   const email = useAuthStore((state) => state.email);
   const role = useAuthStore((state) => state.role);
   const permissions = useAuthStore((state) => state.permissions);
@@ -72,13 +72,15 @@ export default function MainLayout({
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [selectedNotification, setSelectedNotification] = useState<NotificationItem | null>(null);
   const notificationRef = useRef<HTMLDivElement>(null);
+  const hydratedRef = useRef(false);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    hydratedRef.current = true;
     setHydrated(true);
   }, []);
 
   useEffect(() => {
-    if (!hydrated) return;
+    if (!hydratedRef.current) return;
 
     if (!token) {
       router.replace("/login");
@@ -88,7 +90,7 @@ export default function MainLayout({
     if (!canAccessPath(pathname, role, permissions)) {
       router.replace("/unauthorized");
     }
-  }, [hydrated, token, pathname, role, permissions, router]);
+  }, [token, pathname, role, permissions, router]);
 
   const displayName = useMemo(() => {
     if (!email) return "User";

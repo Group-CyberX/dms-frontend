@@ -4,6 +4,7 @@ import { useParams } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Download, FileText, Eye, EyeOff } from "lucide-react";
+import { useAuthStore } from "@/store/auth-store";
 
 type ShareAccessResponse = {
   documentId: string;
@@ -16,6 +17,7 @@ const API = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8081";
 export default function SharePage() {
   const params = useParams();
   const shareToken = params.token as string;
+  const accessToken = useAuthStore((state) => state.accessToken);
 
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -28,7 +30,7 @@ export default function SharePage() {
 
   const handleAccess = async () => {
     
-    const jwt = localStorage.getItem("token");
+    const jwt = accessToken || localStorage.getItem("accessToken");
     const res = await fetch(`${API}/api/share-links/${shareToken}/access`, {
       method: "POST",
       headers: {
@@ -70,7 +72,7 @@ export default function SharePage() {
     try {
       setDownloading(true);
 
-      const jwt = localStorage.getItem("token");
+      const jwt = accessToken || localStorage.getItem("accessToken");
 
       const res = await fetch(
         `${API}/api/share-links/${shareToken}/download?password=${password}`,
@@ -108,7 +110,7 @@ export default function SharePage() {
       return;
     }
 
-    const jwt = localStorage.getItem("token");
+    const jwt = accessToken || localStorage.getItem("accessToken");
     const res = await fetch(`${API}/api/comments/${shareToken}`, {
       method: "POST",
       headers: {
@@ -131,7 +133,7 @@ export default function SharePage() {
 
   // Edit comment
   const editComment = async (id: string, content: string) => {
-    const jwt = localStorage.getItem("token");
+    const jwt = accessToken || localStorage.getItem("accessToken");
 
     const res = await fetch(`${API}/api/comments/${id}`, {
       method: "PUT",
@@ -152,7 +154,7 @@ export default function SharePage() {
 
   // Delete comment
   const deleteComment = async (id: string) => {
-    const jwt = localStorage.getItem("token");
+    const jwt = accessToken || localStorage.getItem("accessToken");
 
     const res = await fetch(`${API}/api/comments/${id}`, {
       method: "DELETE",

@@ -145,7 +145,7 @@ const handleMarkAllRead = async () => {
     <header className="flex h-16 items-center justify-between border-b bg-white px-8">
       {/* Search Bar */}
       <div className="relative w-96">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Search className="absolute left- top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <input 
           type="text" 
           placeholder="Search documents, tasks, workflows..." 

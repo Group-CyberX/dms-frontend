@@ -43,7 +43,6 @@ export default function NavigationSideBar() {
   const role = useAuthStore((state) => state.role);
   const permissions = useAuthStore((state) => state.permissions);
   const router = useRouter();
-  const logout = useAuthStore((s) => s.logout);
 
   const items: NavItem[] = [
     { title: "Dashboard", url: "/dashboard", icon: <LayoutDashboard size={18} />, feature: "dashboard" },
@@ -84,15 +83,17 @@ const buttonClass = (active: boolean) =>
       : "text-slate-700 hover:bg-slate-100 hover:text-slate-900",
   ].join(" ");
 
-  const handleLogout = () => {
-  logout();
-  router.push("/login");
+  //Handle logout with API call to invalidate refresh token
+  const handleLogout = async () => {
+    const logoutAsync = useAuthStore.getState().logoutAsync;
+    await logoutAsync();
+    router.push("/login");
   };
 
   return (
     <Sidebar className="bg-white border-r">
       <SidebarContent className="p-3 flex h-full flex-col overflow-y-auto overflow-x-hidden">
-        {/* Brand (optional, keep or remove) */}
+        {/* Brand  */}
         <div className="px-2 py-2 mb-2 flex items-center gap-2">
           <div className="h-8 w-8 rounded bg-[#8B2E00] text-white flex items-center justify-center text-sm font-bold">
             DMS

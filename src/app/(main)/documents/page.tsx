@@ -6,10 +6,12 @@ import { Input } from '@/components/ui/input';
 import { UploadDocumentDialog } from '@/components/ui/upload-document-dialog';
 import { Plus, Folder, Eye, Download, Edit2, FileText, Loader, Share2 } from 'lucide-react';
 import { getDocuments, Document, getFolders, Folder as FolderType } from '@/lib/api-client';
+import { useAuthStore } from '@/store/auth-store';
 import { useRouter } from 'next/navigation';
 
 export default function DocumentsPage() {
   const router = useRouter();
+  const accessToken = useAuthStore((state) => state.accessToken);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
@@ -19,14 +21,14 @@ export default function DocumentsPage() {
   const [error, setError] = useState<string | null>(null);
   
   useEffect(() => {
-    const token = localStorage.getItem('token');
+    const token = accessToken || localStorage.getItem('accessToken');
     if (!token) {
       router.push('/login');
       return;
     }
     
     fetchData();
-  }, [router]);
+  }, [accessToken, router]);
   
   const fetchData = async () => {
     try {

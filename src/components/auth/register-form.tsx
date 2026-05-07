@@ -4,6 +4,7 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { registerSchema, RegisterFormValues } from "@/lib/schemas/register-schema"
 import { Input } from "@/components/ui/input"
+import PasswordInput from "@/components/ui/password-input"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { useRouter } from "next/navigation";
@@ -38,7 +39,7 @@ export function RegisterForm() {
       throw new Error("Registration failed");
     }
 
-    // ✅ Redirect to login
+    //  Redirect to login
     router.push("/login");
 
   } catch (error) {
@@ -83,14 +84,19 @@ export function RegisterForm() {
       </div>
 
       <div>
-        <Label>Phone Number</Label>
+        <Label>Phone Number *</Label>
         <Input {...register("phone")} />
+        {errors.phone && (
+          <p className="text-sm text-red-500 mt-1">
+            {errors.phone.message}
+          </p>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-4">
         <div>
           <Label>Password *</Label>
-          <Input type="password" {...register("password")} />
+          <PasswordInput {...register("password")} />
           {errors.password && (
             <p className="text-sm text-red-500 mt-1">
               {errors.password.message}
@@ -100,7 +106,7 @@ export function RegisterForm() {
 
         <div>
           <Label>Confirm Password *</Label>
-          <Input type="password" {...register("confirmPassword")} />
+          <PasswordInput {...register("confirmPassword")} />
           {errors.confirmPassword && (
             <p className="text-sm text-red-500 mt-1">
               {errors.confirmPassword.message}

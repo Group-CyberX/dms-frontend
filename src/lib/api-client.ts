@@ -13,23 +13,65 @@ const ADMIN_API_BASE_URL = `${API_ROOT_URL}/admin`;
  * Get authorization header with JWT token
  */
 function getAuthHeader(): Record<string, string> {
-  const storeToken = useAuthStore.getState().token;
-  const persistedToken = (() => {
-    if (typeof window === "undefined") return null;
+  const store = useAuthStore.getState();
 
-    const rawStore = localStorage.getItem("dms-auth-store");
-    if (!rawStore) return null;
+  const token =
+    store.accessToken ||
+    (typeof window !== "undefined"
+      ? localStorage.getItem("token")
+      : null);
 
-    try {
-      const parsed = JSON.parse(rawStore) as { state?: { token?: string } };
-      return parsed.state?.token ?? null;
-    } catch {
-      return null;
-    }
-  })();
-
-  const token = storeToken || persistedToken || (typeof window !== 'undefined' ? localStorage.getItem('token') : null);
   return token ? { Authorization: `Bearer ${token}` } : {};
+}
+//automatically handles authentication and token refresh
+export async function fetchWithAuth(url: string, options: any = {}) {
+  const store = useAuthStore.getState();
+
+  // Send request with JWT token
+  let res = await fetch(url, {
+    ...options,
+    headers: {
+      ...options.headers,
+      ...getAuthHeader(),
+    },
+  });
+
+  // If token expired 
+  if (res.status === 401 && store.refreshToken) {
+    try {
+      const refreshRes = await fetch("http://localhost:8081/auth/refresh", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ refreshToken: store.refreshToken }),
+      });
+
+      if (refreshRes.ok) {
+        const data = await refreshRes.json();
+
+         // Update auth state with new token
+        store.setAuth(data);
+
+        // retry original request with new token
+        res = await fetch(url, {
+          ...options,
+          headers: {
+            ...options.headers,
+            Authorization: `Bearer ${data.accessToken}`,
+          },
+        });
+      } else {
+        store.logout();
+        window.location.href = "/login";
+      }
+    } catch (err) {
+      console.error("Refresh failed", err);
+      store.logout();
+    }
+  }
+
+  return res;
 }
 
 export interface DocumentUploadResponse {
@@ -91,7 +133,7 @@ export async function uploadDocument(
     formData.append('description', params.description);
   }
 
-  const response = await fetch(`${API_BASE_URL}/documents/upload`, {
+  const response = await fetchWithAuth(`${API_BASE_URL}/documents/upload`, {
     method: 'POST',
     body: formData,
     headers: {
@@ -133,7 +175,7 @@ export async function uploadMultipleDocuments(
  * Get all documents
  */
 export async function getDocuments() {
-  const response = await fetch(`${API_BASE_URL}/documents`, {
+  const response = await fetchWithAuth(`${API_BASE_URL}/documents`, {
     headers: getAuthHeader(),
   });
   
@@ -148,7 +190,7 @@ export async function getDocuments() {
  * Get document by ID
  */
 export async function getDocument(id: string) {
-  const response = await fetch(`${API_BASE_URL}/documents/${id}`, {
+  const response = await fetchWithAuth(`${API_BASE_URL}/documents/${id}`, {
     headers: getAuthHeader(),
   });
   
@@ -163,7 +205,7 @@ export async function getDocument(id: string) {
  * Get all folders
  */
 export async function getFolders(): Promise<Folder[]> {
-  const response = await fetch(`${API_BASE_URL}/folders`, {
+  const response = await fetchWithAuth(`${API_BASE_URL}/folders`, {
     headers: getAuthHeader(),
   });
   
@@ -188,7 +230,7 @@ export interface DocumentVersion {
  * Get all versions of a document
  */
 export async function getDocumentVersions(documentId: string): Promise<DocumentVersion[]> {
-  const response = await fetch(`${API_BASE_URL}/documents/${documentId}/versions`, {
+  const response = await fetchWithAuth(`${API_BASE_URL}/documents/${documentId}/versions`, {
     headers: getAuthHeader(),
   });
   
@@ -208,7 +250,7 @@ export interface Tag {
  * Get all tags for a document
  */
 export async function getDocumentTags(documentId: string): Promise<Tag[]> {
-  const response = await fetch(`${API_BASE_URL}/tags/document/${documentId}`, {
+  const response = await fetchWithAuth(`${API_BASE_URL}/tags/document/${documentId}`, {
     headers: getAuthHeader(),
   });
   
@@ -223,7 +265,7 @@ export async function getDocumentTags(documentId: string): Promise<Tag[]> {
  * Add a new tag to a document
  */
 export async function addTagToDocument(documentId: string, tagName: string): Promise<Tag> {
-  const response = await fetch(
+  const response = await fetchWithAuth(
     `${API_BASE_URL}/tags/document/${documentId}?tagName=${encodeURIComponent(tagName)}`,
     {
       method: 'POST',
@@ -248,7 +290,7 @@ export async function createFolder(name: string, parentFolderId?: string, path?:
     path: path || `/${name}`,
   };
 
-  const response = await fetch(`${API_BASE_URL}/folders`, {
+  const response = await fetchWithAuth(`${API_BASE_URL}/folders`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -268,7 +310,7 @@ export async function createFolder(name: string, parentFolderId?: string, path?:
  * Get folder by ID
  */
 export async function getFolder(folderId: string): Promise<Folder> {
-  const response = await fetch(`${API_BASE_URL}/folders/${folderId}`, {
+  const response = await fetchWithAuth(`${API_BASE_URL}/folders/${folderId}`, {
     headers: getAuthHeader(),
   });
 
@@ -289,7 +331,7 @@ export async function updateFolder(folderId: string, name: string, parentFolderI
     path: path || `/${name}`,
   };
 
-  const response = await fetch(`${API_BASE_URL}/folders/${folderId}`, {
+  const response = await fetchWithAuth(`${API_BASE_URL}/folders/${folderId}`, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
@@ -309,7 +351,7 @@ export async function updateFolder(folderId: string, name: string, parentFolderI
  * Delete a folder
  */
 export async function deleteFolder(folderId: string): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/folders/${folderId}`, {
+  const response = await fetchWithAuth(`${API_BASE_URL}/folders/${folderId}`, {
     method: 'DELETE',
     headers: getAuthHeader(),
   });
@@ -326,7 +368,7 @@ export async function uploadNewVersion(documentId: string, file: File): Promise<
   const formData = new FormData();
   formData.append('file', file);
 
-  const response = await fetch(`${API_BASE_URL}/documents/${documentId}/versions/upload`, {
+  const response = await fetchWithAuth(`${API_BASE_URL}/documents/${documentId}/versions/upload`, {
     method: 'POST',
     body: formData,
     headers: getAuthHeader(),
@@ -346,7 +388,7 @@ export async function uploadNewVersion(documentId: string, file: File): Promise<
  * Download document version file
  */
 export async function downloadDocumentVersion(documentId: string, versionId: string): Promise<Blob> {
-  const response = await fetch(
+  const response = await fetchWithAuth(
     `${API_BASE_URL}/documents/${documentId}/versions/${versionId}/download`,
     {
       method: 'GET',
@@ -365,7 +407,7 @@ export async function downloadDocumentVersion(documentId: string, versionId: str
  * Restore document version
  */
 export async function restoreDocumentVersion(documentId: string, versionId: string): Promise<DocumentVersion> {
-  const response = await fetch(`${API_BASE_URL}/documents/${documentId}/versions/${versionId}/restore`, {
+  const response = await fetchWithAuth(`${API_BASE_URL}/documents/${documentId}/versions/${versionId}/restore`, {
     method: 'POST',
     headers: getAuthHeader(),
   });
@@ -381,7 +423,7 @@ export async function restoreDocumentVersion(documentId: string, versionId: stri
  * Delete document version
  */
 export async function deleteDocumentVersion(documentId: string, versionId: string): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/documents/${documentId}/versions/${versionId}`, {
+  const response = await fetchWithAuth(`${API_BASE_URL}/documents/${documentId}/versions/${versionId}`, {
     method: 'DELETE',
     headers: getAuthHeader(),
   });
@@ -406,7 +448,7 @@ export interface User {
 }
 
 export async function getUsers(): Promise<User[]> {
-  const response = await fetch(`${ADMIN_API_BASE_URL}/users`, {
+  const response = await fetchWithAuth(`${ADMIN_API_BASE_URL}/users`, {
     headers: getAuthHeader(),
   });
 
@@ -423,7 +465,7 @@ export async function createUser(data: {
   password: string;
   role: string;
 }): Promise<User> {
-  const response = await fetch(`${ADMIN_API_BASE_URL}/users/users`, {
+  const response = await fetchWithAuth(`${ADMIN_API_BASE_URL}/users/users`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -446,7 +488,7 @@ export async function updateUser(
     role: string;
   }
 ): Promise<User> {
-  const response = await fetch(`${ADMIN_API_BASE_URL}/users/${userId}`, {
+  const response = await fetchWithAuth(`${ADMIN_API_BASE_URL}/users/${userId}`, {
     method: "PUT",
     headers: {
       "Content-Type": "application/json",
@@ -466,7 +508,7 @@ export async function updateUserStatus(
   userId: string,
   status: string
 ): Promise<User> {
-  const response = await fetch(
+  const response = await fetchWithAuth(
     `${ADMIN_API_BASE_URL}/users/${userId}/status`,
     {
       method: "PATCH",
@@ -494,7 +536,7 @@ export interface Role {
 }
 
 export async function getRoles(): Promise<Role[]> {
-  const response = await fetch(`${ADMIN_API_BASE_URL}/roles`, {
+  const response = await fetchWithAuth(`${ADMIN_API_BASE_URL}/roles`, {
     headers: getAuthHeader(),
   });
 
@@ -509,7 +551,7 @@ export async function createRole(data: {
   name: string;
   permissions: string;
 }): Promise<Role> {
-  const response = await fetch(`${ADMIN_API_BASE_URL}/roles`, {
+  const response = await fetchWithAuth(`${ADMIN_API_BASE_URL}/roles`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -530,7 +572,7 @@ export async function updateRolePermissions(
   permissions: string,
   name?: string
 ): Promise<Role> {
-  const response = await fetch(`${ADMIN_API_BASE_URL}/roles/${roleId}`, {
+  const response = await fetchWithAuth(`${ADMIN_API_BASE_URL}/roles/${roleId}`, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
@@ -561,6 +603,39 @@ export async function updateRolePermissions(
     }
 
     throw new Error(`Failed to update role (${response.status}): ${message}`);
+  }
+
+  return response.json();
+}
+
+// ================= AUTH =================
+
+export async function logoutAPI(refreshToken: string): Promise<void> {
+  try {
+    await fetch(`${API_ROOT_URL}/auth/logout`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ refreshToken }),
+    });
+  } catch (err) {
+    // Logout API call failed, but we still clear local state
+    console.error('Failed to revoke token on server:', err);
+  }
+}
+
+export async function refreshAccessToken(refreshToken: string): Promise<any> {
+  const response = await fetch(`${API_ROOT_URL}/auth/refresh`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ refreshToken }),
+  });
+
+  if (!response.ok) {
+    throw new Error('Token refresh failed');
   }
 
   return response.json();

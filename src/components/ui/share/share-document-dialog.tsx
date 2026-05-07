@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { X, Link2, Lock, Calendar, ChevronDown, Eye, EyeOff } from "lucide-react";
+import { useAuthStore } from "@/store/auth-store";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL!;
 const SHARE_LINK_ENDPOINT = `${API_BASE_URL}/api/share-links`;
@@ -48,6 +49,7 @@ export default function ShareDocumentDialog({
     const [token, setToken] = useState<string>("");
     const [loading, setLoading] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
+    const accessToken = useAuthStore((state) => state.accessToken);
 
     const handleGenerate = async (): Promise<void> => {
         try {
@@ -59,13 +61,13 @@ export default function ShareDocumentDialog({
                 return;
             }
 
-            const jwt = localStorage.getItem("token"); // ✅ ADD THIS
+            const jwt = accessToken || localStorage.getItem("accessToken");
 
 const response = await fetch(SHARE_LINK_ENDPOINT, {
     method: "POST",
     headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${jwt}`, // 🔥 THIS IS THE FIX
+        ...(jwt && { Authorization: `Bearer ${jwt}` }),
     },
                 body: JSON.stringify({
                     documentId: documentId,

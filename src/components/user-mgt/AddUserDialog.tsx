@@ -1,6 +1,7 @@
 "use client";
-
+// React hooks for state and lifecycle
 import { useEffect, useState, type FormEvent } from "react";
+// UI components (dialog, inputs, buttons)
 import {
   Dialog,
   DialogContent,
@@ -34,10 +35,11 @@ export function AddUserDialog({
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("");
   const [temporaryPassword, setTemporaryPassword] = useState("");
+ // Roles fetched from backend
   const [roles, setRoles] = useState<Role[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
+// Load roles when dialog opens
   useEffect(() => {
     if (!open) return;
 
@@ -54,7 +56,7 @@ export function AddUserDialog({
 
     loadRoles();
   }, [open]);
-
+// Reset form fields
   const resetForm = () => {
     setUsername("");
     setEmail("");
