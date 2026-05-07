@@ -53,46 +53,62 @@ export interface Folder {
 }
 
 /**
- * Upload a document with metadata
+ * Upload a document with metadata and progress tracking
  */
 export async function uploadDocument(
-  params: UploadDocumentParams
+  params: UploadDocumentParams,
+  onProgress?: (progress: { loaded: number; total: number; percentage: number }) => void
 ): Promise<DocumentUploadResponse> {
-  const formData = new FormData();
-  formData.append('file', params.file);
-  formData.append('title', params.title);
-  
-  if (params.folderId) {
-    formData.append('folderId', params.folderId);
-  }
-  if (params.category) {
-    formData.append('category', params.category);
-  }
-  if (params.tags) {
-    formData.append('tags', params.tags);
-  }
-  if (params.description) {
-    formData.append('description', params.description);
-  }
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const formData = new FormData();
+    formData.append('file', params.file);
+    formData.append('title', params.title);
+    
+    if (params.folderId) formData.append('folderId', params.folderId);
+    if (params.category) formData.append('category', params.category);
+    if (params.tags) formData.append('tags', params.tags);
+    if (params.description) formData.append('description', params.description);
 
-  const response = await fetch(`${API_BASE_URL}/documents/upload`, {
-    method: 'POST',
-    body: formData,
-    headers: {
-      ...getAuthHeader(),
-      // Don't set Content-Type header - browser will set it automatically
-      // with the correct boundary for multipart/form-data
-    },
+    // Track upload progress (KB by KB)
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable && onProgress) {
+        const percentage = (event.loaded / event.total) * 100;
+        onProgress({
+          loaded: event.loaded,
+          total: event.total,
+          percentage,
+        });
+      }
+    };
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const response = JSON.parse(xhr.responseText);
+          resolve(response);
+        } catch (error) {
+          reject(new Error('Failed to parse response'));
+        }
+      } else {
+        try {
+          const errorData = JSON.parse(xhr.responseText);
+          reject(new Error(errorData.message || `Upload failed with status ${xhr.status}`));
+        } catch {
+          reject(new Error(`Upload failed with status ${xhr.status}`));
+        }
+      }
+    };
+
+    xhr.onerror = () => {
+      reject(new Error('Upload failed - network error'));
+    };
+
+    xhr.open('POST', `${API_BASE_URL}/documents/upload`);
+    const authHeader = getAuthHeader().Authorization;
+    if (authHeader) xhr.setRequestHeader('Authorization', authHeader);
+    xhr.send(formData);
   });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(
-      errorData.message || `Upload failed with status ${response.status}`
-    );
-  }
-
-  return response.json() as Promise<DocumentUploadResponse>;
 }
 
 /**
@@ -455,4 +471,129 @@ export async function permanentlyDeleteMultipleDocuments(documentIds: string[]):
   // Execute delete one by one
   const deletePromises = documentIds.map(id => permanentlyDeleteDocument(id));
   await Promise.all(deletePromises);
+}
+
+// ============= MULTIPART UPLOAD FUNCTIONS =============
+
+/**
+ * Initiate multipart upload session
+ */
+export async function initiateMultipartUpload(
+  fileName: string,
+  totalSize: number,
+  documentId?: string
+): Promise<{ sessionId: string; s3UploadId: string; partSize: number }> {
+  const params = new URLSearchParams({
+    fileName,
+    totalSize: totalSize.toString(),
+    ...(documentId && { documentId }),
+  });
+
+  const response = await fetch(`${API_BASE_URL}/multipart-uploads/initiate?${params}`, {
+    method: 'POST',
+    headers: getAuthHeader(),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to initiate multipart upload: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Upload single chunk/part
+ */
+export async function uploadPartChunk(
+  sessionId: string,
+  partNumber: number,
+  chunkFile: File
+): Promise<{ partNumber: number; eTag: string; uploadedBytes: number; totalBytes: number }> {
+  const formData = new FormData();
+  formData.append('chunk', chunkFile);
+
+  const response = await fetch(
+    `${API_BASE_URL}/multipart-uploads/${sessionId}/parts/${partNumber}`,
+    {
+      method: 'POST',
+      body: formData,
+      headers: getAuthHeader(),
+    }
+  );
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Failed to upload part ${partNumber}: ${error}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Complete multipart upload
+ */
+export async function completeMultipartUpload(
+  sessionId: string,
+  title: string,
+  metadata: {
+    folderId?: string;
+    category?: string;
+    tags?: string;
+    description?: string;
+  }
+): Promise<DocumentUploadResponse> {
+  const params = new URLSearchParams({
+    title,
+    ...(metadata.folderId && { folderId: metadata.folderId }),
+    ...(metadata.category && { category: metadata.category }),
+    ...(metadata.tags && { tags: metadata.tags }),
+    ...(metadata.description && { description: metadata.description }),
+  });
+
+  const response = await fetch(
+    `${API_BASE_URL}/multipart-uploads/${sessionId}/complete?${params}`,
+    {
+      method: 'POST',
+      headers: getAuthHeader(),
+    }
+  );
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Failed to complete upload: ${error}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Get upload progress
+ */
+export async function getUploadProgress(
+  sessionId: string
+): Promise<{ uploadedBytes: number; totalBytes: number; percentComplete: number; status: string }> {
+  const response = await fetch(`${API_BASE_URL}/multipart-uploads/${sessionId}/progress`, {
+    method: 'GET',
+    headers: getAuthHeader(),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to get upload progress: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Abort multipart upload
+ */
+export async function abortMultipartUpload(sessionId: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/multipart-uploads/${sessionId}/abort`, {
+    method: 'POST',
+    headers: getAuthHeader(),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to abort upload: ${response.statusText}`);
+  }
 }
