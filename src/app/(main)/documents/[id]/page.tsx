@@ -16,7 +16,6 @@ import {
   Loader2,
   Calendar,
   RotateCcw,
-  Trash2,
   Upload,
   X,
   CheckCircle,
@@ -41,9 +40,11 @@ export default function DocumentDetailPage() {
   const [uploadingVersion, setUploadingVersion] = useState(false);
   const [downloadingVersionId, setDownloadingVersionId] = useState<string | null>(null);
   const [restoringVersionId, setRestoringVersionId] = useState<string | null>(null);
-  const [deletingVersionId, setDeletingVersionId] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewType, setPreviewType] = useState<'image' | 'pdf' | 'docx' | 'xlsx' | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(true);
 
   const onDrop = (acceptedFiles: File[]) => {
     const validFiles = acceptedFiles.filter(
@@ -70,6 +71,90 @@ export default function DocumentDetailPage() {
       'image/jpeg': ['.jpg', '.jpeg'],
     },
   });
+
+  const getDocumentType = (fileName: string): 'image' | 'pdf' | 'docx' | 'xlsx' | null => {
+    const ext = fileName.split('.').pop()?.toLowerCase();
+    if (['png', 'jpg', 'jpeg'].includes(ext || '')) return 'image';
+    if (ext === 'pdf') return 'pdf';
+    if (ext === 'docx') return 'docx';
+    if (ext === 'xlsx') return 'xlsx';
+    return null;
+  };
+
+  const getFileNameFromS3Key = (s3Key: string): string => {
+    // S3 key format: documents/{documentId}/{versionId}/{filename}
+    const parts = s3Key.split('/');
+    return parts[parts.length - 1] || '';
+  };
+
+  useEffect(() => {
+    let isMounted = true;
+    let previousUrl: string | null = null;
+
+    const loadPreview = async () => {
+      try {
+        setPreviewLoading(true);
+        if (document?.current_version_id && versions.length > 0) {
+          // Find the current version to get the actual filename from S3 key
+          const currentVersion = versions.find(v => v.version_id === document.current_version_id);
+          if (!currentVersion) {
+            console.warn('Current version not found in versions array');
+            return;
+          }
+
+          console.log('Current version:', currentVersion);
+          console.log('S3 bucket key:', currentVersion.s3_bucket_key);
+
+          const blob = await downloadDocumentVersion(document.document_id, document.current_version_id);
+          
+          if (!isMounted) {
+            // If component unmounted, revoke the URL immediately
+            URL.revokeObjectURL(URL.createObjectURL(blob));
+            return;
+          }
+          
+          // Revoke previous URL if it exists
+          if (previousUrl) {
+            URL.revokeObjectURL(previousUrl);
+          }
+          
+          // Extract filename from S3 key, fallback to document.title
+          let fileName = currentVersion.s3_bucket_key 
+            ? getFileNameFromS3Key(currentVersion.s3_bucket_key)
+            : document.title;
+          
+          console.log('Extracted filename:', fileName);
+          
+          const type = getDocumentType(fileName);
+          console.log('Detected type:', type);
+          
+          const url = URL.createObjectURL(blob);
+          previousUrl = url;
+          setPreviewUrl(url);
+          setPreviewType(type);
+        }
+      } catch (err) {
+        console.error('Error loading preview:', err);
+        if (isMounted) {
+          setPreviewUrl(null);
+          setPreviewType(null);
+        }
+      } finally {
+        if (isMounted) {
+          setPreviewLoading(false);
+        }
+      }
+    };
+    loadPreview();
+
+    // Cleanup: revoke object URL to free memory
+    return () => {
+      isMounted = false;
+      if (previousUrl) {
+        URL.revokeObjectURL(previousUrl);
+      }
+    };
+  }, [document?.current_version_id, document?.document_id, versions]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -192,6 +277,10 @@ export default function DocumentDetailPage() {
       setUploadSuccess(null);
       const newVersion = await uploadNewVersion(document.document_id, newVersionFile);
       setVersions([newVersion, ...versions]);
+      
+      // Update document with new version ID to trigger preview reload
+      setDocument({ ...document, current_version_id: newVersion.version_id });
+      
       setUploadSuccess('New version uploaded successfully!');
       setUploadDialogOpen(false);
       setNewVersionFile(null);
@@ -214,13 +303,13 @@ export default function DocumentDetailPage() {
       setDownloadingVersionId(versionId);
       const blob = await downloadDocumentVersion(document.document_id, versionId);
       const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
+      const a = globalThis.document.createElement('a');
       a.href = url;
       a.download = `${document.title}-v${versionId.substring(0, 8)}`;
-      document.body.appendChild(a);
+      globalThis.document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      globalThis.document.body.removeChild(a);
     } catch (err) {
       console.error('Error downloading version:', err);
       alert(err instanceof Error ? err.message : 'Failed to download version');
@@ -244,33 +333,6 @@ export default function DocumentDetailPage() {
       alert(err instanceof Error ? err.message : 'Failed to restore version');
     } finally {
       setRestoringVersionId(null);
-    }
-  };
-
-  const handleDeleteVersion = async (versionId: string) => {
-    if (!document) {
-      return;
-    }
-
-    if (versions.length <= 1) {
-      alert('Cannot delete the only version of a document');
-      return;
-    }
-
-    if (!confirm('Are you sure you want to delete this version?')) {
-      return;
-    }
-
-    try {
-      setDeletingVersionId(versionId);
-      await deleteDocumentVersion(document.document_id, versionId);
-      setVersions(versions.filter((v) => v.version_id !== versionId));
-      alert('Version deleted successfully');
-    } catch (err) {
-      console.error('Error deleting version:', err);
-      alert(err instanceof Error ? err.message : 'Failed to delete version');
-    } finally {
-      setDeletingVersionId(null);
     }
   };
 
@@ -358,11 +420,16 @@ export default function DocumentDetailPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2">
             <div className="bg-white rounded-lg shadow-sm p-8">
-              <div className="flex flex-col items-center justify-center min-h-96 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
-                <FileText className="w-16 h-16 text-gray-400 mb-4" />
-                <p className="text-gray-600 font-medium">{fileExtension} Document Preview</p>
-                <p className="text-sm text-gray-500 mt-2">{document.title}</p>
-              </div>
+              {previewLoading ? (
+                <div className="flex items-center justify-center h-96">
+                  <div className="flex flex-col items-center">
+                    <Loader2 className="w-8 h-8 text-[#953002] animate-spin" />
+                    <p className="text-gray-600 mt-3 text-sm">Loading preview...</p>
+                  </div>
+                </div>
+              ) : (
+                <DocumentPreview url={previewUrl} type={previewType} title={document.title} />
+              )}
             </div>
           </div>
 
@@ -377,7 +444,7 @@ export default function DocumentDetailPage() {
                 <div>
                   <p className="text-xs font-medium text-gray-500 uppercase">Owner</p>
                   <p className="text-sm text-gray-900 mt-1">
-                    {document.owner_id === '00000000-0000-0000-0000-000000000000' ? 'System' : 'Unknown'}
+                    {document.owner_name || 'Unknown'}
                   </p>
                 </div>
                 <div>
@@ -483,20 +550,6 @@ export default function DocumentDetailPage() {
                               <Loader2 className="w-4 h-4 text-gray-600 animate-spin" />
                             ) : (
                               <RotateCcw className="w-4 h-4 text-gray-600" />
-                            )}
-                          </button>
-                        )}
-                        {versions.length > 1 && (
-                          <button 
-                            onClick={() => handleDeleteVersion(version.version_id)}
-                            disabled={deletingVersionId === version.version_id}
-                            className="p-1 hover:bg-red-200 rounded transition disabled:opacity-50 disabled:cursor-not-allowed"
-                            title="Delete version"
-                          >
-                            {deletingVersionId === version.version_id ? (
-                              <Loader2 className="w-4 h-4 text-red-600 animate-spin" />
-                            ) : (
-                              <Trash2 className="w-4 h-4 text-red-600" />
                             )}
                           </button>
                         )}

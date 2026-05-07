@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { UploadDocumentDialog } from '@/components/ui/upload-document-dialog';
-import { Plus, Folder, Eye, Download, Edit2, FileText, Loader, Share2 } from 'lucide-react';
+import { Plus, Folder, Eye, Download, Edit2, FileText, Loader, Trash2, Share2 } from 'lucide-react';
 import { getDocuments, Document, getFolders, Folder as FolderType, getWorkflows, WorkflowInstance } from '@/lib/api-client';
 import { useRouter } from 'next/navigation';
 
@@ -96,6 +96,20 @@ export default function DocumentsPage() {
   const getFileType = (filename: string) => {
     const ext = filename.split('.').pop()?.toUpperCase() || 'FILE';
     return ext;
+  };
+
+  const handleDelete = async (documentId: string, documentTitle: string) => {
+    const confirmed = window.confirm(`Are you sure you want to delete "${documentTitle}"? This action cannot be undone.`);
+    
+    if (!confirmed) return;
+    
+    try {
+      await deleteDocument(documentId);
+      setDocuments(documents.filter(doc => doc.document_id !== documentId));
+    } catch (err) {
+      console.error('Failed to delete document:', err);
+      setError('Failed to delete document');
+    }
   };
 
   // Filter documents based on search query and selected folder
@@ -318,6 +332,16 @@ export default function DocumentsPage() {
                             </button>
                             <button className="p-1 hover:bg-gray-200 rounded transition" title="Download">
                               <Download className="w-4 h-4 text-gray-600" />
+                            </button>
+                            <button 
+                              className="p-1 hover:bg-red-100 rounded transition" 
+                              title="Delete"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDelete(doc.document_id, doc.title);
+                              }}
+                            >
+                              <Trash2 className="w-4 h-4 text-red-600" />
                             </button>
                             <button className="p-1 hover:bg-gray-200 rounded transition" title="Share">
                               <Share2 className="w-4 h-4 text-gray-600" />

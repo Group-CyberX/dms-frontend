@@ -19,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Upload, X } from 'lucide-react';
+import { Upload, X, AlertCircle, CheckCircle } from 'lucide-react';
 
 interface UploadDocumentDialogProps {
   open: boolean;
@@ -38,13 +38,17 @@ export function UploadDocumentDialog({
   const [tags, setTags] = useState('');
   const [description, setDescription] = useState('');
   const [isUploading, setIsUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
 
   const onDrop = (acceptedFiles: File[]) => {
     const validFiles = acceptedFiles.filter(
       (file) => file.size <= 100 * 1024 * 1024
     );
     if (validFiles.length < acceptedFiles.length) {
-      alert('Some files were too large (max 100MB) and were not added.');
+      setError('Some files were too large (max 100MB) and were not added.');
+    } else {
+      setError(null);
     }
     setFiles((prev) => [...prev, ...validFiles]);
   };
@@ -57,16 +61,30 @@ export function UploadDocumentDialog({
 
   const removeFile = (indexToRemove: number) => {
     setFiles((prev) => prev.filter((_, index) => index !== indexToRemove));
+    if (error) setError(null);
   };
 
   const handleUpload = async () => {
-    if (!files.length || !documentName || !category) {
-      alert('Please fill in all required fields');
-      return;
-    }
+    // Clear previous errors
+    setError(null);
+    setSuccess(false);
 
-    setIsUploading(true);
-    try {
+    // Frontend validation
+    if (!files.length) {
+      setError('Please select a file to upload');
+      return;
+    }
+    if (!documentName.trim()) {
+      setError('Document name is required');
+      return;
+    }
+    if (!category) {
+      setError('Category is required');
+      return;
+    }
+
+    setIsUploading(true);
+    try {
       console.log('Uploading document...');
       
       const result = await uploadDocument({
@@ -77,8 +95,14 @@ export function UploadDocumentDialog({
         description: description || undefined,
       });
       
+      if (!result.success) {
+        setError(result.message || 'Upload failed');
+        setIsUploading(false);
+        return;
+      }
+
       console.log('Upload successful!', result);
-      alert('Document uploaded successfully!');
+      setSuccess(true);
 
       // Reset form on success
       setFiles([]);
@@ -86,25 +110,30 @@ export function UploadDocumentDialog({
       setCategory('');
       setTags('');
       setDescription('');
-      onOpenChange(false);
+      setError(null);
       
-      // Refresh documents list if callback provided
-      if (onUploadSuccess) {
-        await onUploadSuccess();
-      }
+      // Close dialog and refresh after a short delay
+      setTimeout(() => {
+        onOpenChange(false);
+        if (onUploadSuccess) {
+          onUploadSuccess();
+        }
+      }, 1500);
       
     } catch (error) {
       console.error('Upload failed:', error);
-      
       const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
-      alert(`Upload failed: ${errorMessage}`);
-    } finally {
+      setError(errorMessage);
       setIsUploading(false);
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(newOpen) => {
+      setError(null);
+      setSuccess(false);
+      onOpenChange(newOpen);
+    }}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle className="text-lg">Upload Document</DialogTitle>
@@ -114,6 +143,25 @@ export function UploadDocumentDialog({
         </DialogHeader>
 
         <div className="space-y-4 py-2">
+          {/* Error Message */}
+          {error && (
+            <div className="flex items-start gap-3 p-3 rounded-md bg-red-50 border border-red-200">
+              <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-red-800">{error}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Success Message */}
+          {success && (
+            <div className="flex items-start gap-3 p-3 rounded-md bg-green-50 border border-green-200">
+              <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-green-800">Document uploaded successfully!</p>
+              </div>
+            </div>
+          )}
           {/* File Upload Section */}
           <div className="space-y-1">
             <label className="text-xs font-medium text-gray-700">
@@ -189,7 +237,10 @@ export function UploadDocumentDialog({
                 id="docname"
                 placeholder="Enter document name"
                 value={documentName}
-                onChange={(event) => setDocumentName(event.target.value)}
+                onChange={(event) => {
+                  setDocumentName(event.target.value);
+                  if (error) setError(null);
+                }}
                 className="bg-white border-gray-300 text-sm h-9"
               />
             </div>
@@ -199,7 +250,10 @@ export function UploadDocumentDialog({
               <label htmlFor="category" className="text-xs font-medium text-gray-700">
                 Category *
               </label>
-              <Select value={category} onValueChange={setCategory}>
+              <Select value={category} onValueChange={(value) => {
+                setCategory(value);
+                if (error) setError(null);
+              }}>
                 <SelectTrigger className="bg-white border-gray-300 h-9 text-sm">
                   <SelectValue placeholder="Select category" />
                 </SelectTrigger>
@@ -223,7 +277,10 @@ export function UploadDocumentDialog({
               id="tags"
               placeholder="Enter tags (comma-separated)"
               value={tags}
-              onChange={(event) => setTags(event.target.value)}
+              onChange={(event) => {
+                setTags(event.target.value);
+                if (error) setError(null);
+              }}
               className="bg-white border-gray-300 text-sm h-9"
             />
             <p className="text-xs text-gray-500">
@@ -240,7 +297,10 @@ export function UploadDocumentDialog({
               id="description"
               placeholder="Enter document description (optional)"
               value={description}
-              onChange={(event) => setDescription(event.target.value)}
+              onChange={(event) => {
+                setDescription(event.target.value);
+                if (error) setError(null);
+              }}
               className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-xs focus-visible:border-amber-700 focus-visible:ring-2 focus-visible:ring-amber-200"
               rows={3}
             />
@@ -251,18 +311,18 @@ export function UploadDocumentDialog({
           <Button
             variant="outline"
             onClick={() => onOpenChange(false)}
-            disabled={isUploading}
+            disabled={isUploading || success}
             className="border-gray-300 h-9 text-sm"
           >
             Cancel
           </Button>
           <Button
             onClick={handleUpload}
-            disabled={isUploading || files.length === 0}
+            disabled={isUploading || files.length === 0 || success}
             className="bg-[#953002] hover:bg-[#953002] text-white h-9 text-sm"
           >
             <Upload className="w-4 h-4 mr-1" />
-            {isUploading ? 'Uploading...' : 'Upload'}
+            {isUploading ? 'Uploading...' : success ? 'Done' : 'Upload'}
           </Button>
         </DialogFooter>
       </DialogContent>
