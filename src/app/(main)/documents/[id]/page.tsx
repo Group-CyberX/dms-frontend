@@ -4,8 +4,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useDropzone } from 'react-dropzone';
 import { Button } from '@/components/ui/button';
-import { DocumentPreview } from '@/components/ui/DocumentPreview';
-import { getDocument, getDocumentVersions, Document, DocumentVersion, getDocumentTags, addTagToDocument, Tag, uploadNewVersion, downloadDocumentVersion, restoreDocumentVersion, deleteDocumentVersion } from '@/lib/api-client';
+import { getDocument, getDocumentVersions, Document, DocumentVersion, getDocumentTags, addTagToDocument, Tag, uploadNewVersion, downloadDocumentVersion, restoreDocumentVersion, deleteDocumentVersion, getWorkflows, WorkflowInstance } from '@/lib/api-client';
 import  ShareDocumentDialog  from '@/components/ui/share/share-document-dialog';
 import {
   ArrowLeft,
@@ -30,6 +29,7 @@ export default function DocumentDetailPage() {
   const [document, setDocument] = useState<Document | null>(null);
   const [versions, setVersions] = useState<DocumentVersion[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
+  const [workflowStatus, setWorkflowStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [newTagInput, setNewTagInput] = useState('');
@@ -160,14 +160,30 @@ export default function DocumentDetailPage() {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const [docData, versionsData, tagsData] = await Promise.all([
+        const [docData, versionsData, tagsData, workflowsData] = await Promise.all([
           getDocument(documentId),
           getDocumentVersions(documentId),
           getDocumentTags(documentId),
+          getWorkflows(),
         ]);
         setDocument(docData);
         setVersions(versionsData || []);
         setTags(tagsData || []);
+
+        // Find latest workflow for this document
+        const workflows = Array.isArray(workflowsData) ? workflowsData as WorkflowInstance[] : [];
+        const docWorkflows = workflows.filter(
+          (w) => String(w.documentId ?? w.document_id ?? '') === String(documentId)
+        );
+        if (docWorkflows.length > 0) {
+          const latestWorkflow = docWorkflows.reduce((latest, current) =>
+            (current.id && latest.id && current.id > latest.id) ? current : latest
+          );
+          setWorkflowStatus(latestWorkflow.status || null);
+        } else {
+          setWorkflowStatus(null);
+        }
+
         setError(null);
       } catch (err) {
         console.error('Error fetching document:', err);
@@ -213,6 +229,23 @@ export default function DocumentDetailPage() {
     } catch {
       return dateString;
     }
+  };
+
+  const getStatusBadge = () => {
+    if (!workflowStatus) {
+      return <span className="px-3 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-700">None</span>;
+    }
+    const normalized = String(workflowStatus).toUpperCase();
+    if (normalized === 'PENDING_APPROVAL') {
+      return <span className="px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">Pending Approval</span>;
+    }
+    if (normalized === 'APPROVED') {
+      return <span className="px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">Approved</span>;
+    }
+    if (normalized === 'REJECTED') {
+      return <span className="px-3 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700">Rejected</span>;
+    }
+    return <span className="px-3 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-700">{workflowStatus}</span>;
   };
 
   const handleAddTag = async () => {
@@ -417,9 +450,7 @@ export default function DocumentDetailPage() {
                 <div>
                   <p className="text-xs font-medium text-gray-500 uppercase">Status</p>
                   <div className="flex items-center gap-2 mt-1">
-                    <span className="px-3 py-1 rounded-full text-xs font-medium bg-amber-700 text-white">
-                    
-                    </span>
+                    {getStatusBadge()}
                     {document.is_locked && <Lock className="w-4 h-4 text-gray-600" />}
                   </div>
                 </div>
