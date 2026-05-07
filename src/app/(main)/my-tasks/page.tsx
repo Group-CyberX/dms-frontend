@@ -24,6 +24,8 @@ type WorkflowInstance = {
   documentId: string;
   templateId: number | null;
   workflowName: string;
+  description?: string;
+  documentType?: string;
   priority: string;
   dueDate: string;
   status: string;
@@ -67,6 +69,10 @@ type TaskRow = {
 const statusLabelClass = (status: string) => {
   const normalized = status.toUpperCase();
 
+  if (normalized === 'ACTIVE') {
+    return 'bg-blue-100 text-blue-700';
+  }
+
   if (normalized === 'PENDING') {
     return 'bg-yellow-100 text-yellow-700';
   }
@@ -99,6 +105,14 @@ const priorityClass = (priority: string) => {
 
   return 'bg-slate-100 text-slate-700';
 };
+
+  const statusMessageClass = (message: string) => {
+    if (message === 'Waiting for previous step') {
+      return 'text-green-600';
+    }
+
+    return 'text-red-600';
+  };
 
 const normalize = (value: string | null | undefined) => String(value ?? '').trim().toUpperCase();
 
@@ -150,7 +164,7 @@ export default function MyTasksPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedFilter, setSelectedFilter] = useState<'all' | 'pending' | 'overdue' | 'approved' | 'rejected'>('all');
+  const [selectedFilter, setSelectedFilter] = useState<'all' | 'active' | 'pending' | 'overdue' | 'approved' | 'rejected'>('all');
 
   const getJson = async (response: Response) => {
     const text = await response.text();
@@ -330,6 +344,7 @@ export default function MyTasksPage() {
 
   // Calculate summary counts for each status
   const total = taskRows.length;
+  const active = taskRows.filter((row) => row.task.status.toUpperCase() === 'ACTIVE').length;
   const pending = taskRows.filter((row) => row.task.status.toUpperCase() === 'PENDING').length;
   const approved = taskRows.filter((row) => row.task.status.toUpperCase() === 'APPROVED').length;
   const overdue = taskRows.filter((row) => row.isOverdue).length;
@@ -338,6 +353,8 @@ export default function MyTasksPage() {
   // Filter displayed rows based on selected status filter
   const displayedRows = useMemo(() => {
     switch (selectedFilter) {
+      case 'active':
+        return taskRows.filter((r) => r.task.status.toUpperCase() === 'ACTIVE');
       case 'pending':
         return taskRows.filter((r) => r.task.status.toUpperCase() === 'PENDING');
       case 'approved':
@@ -430,6 +447,12 @@ export default function MyTasksPage() {
           active={selectedFilter === 'pending'}
         />
         <Card
+          title="Active"
+          value={active}
+          onClick={() => setSelectedFilter('active')}
+          active={selectedFilter === 'active'}
+        />
+        <Card
           title="Overdue"
           value={overdue}
           onClick={() => setSelectedFilter('overdue')}
@@ -474,8 +497,19 @@ export default function MyTasksPage() {
             <tbody>
               {displayedRows.map((row) => {
 
-                // Only allow actions if task is pending
-                const canAct = row.task.status.toUpperCase() === 'PENDING';
+                // Only allow actions if task is ACTIVE and not overdue and workflow not rejected
+                const isWorkflowRejected = row.workflow?.status?.toUpperCase() === 'REJECTED';
+                const canAct = row.task.status.toUpperCase() === 'ACTIVE' && !row.isOverdue && !isWorkflowRejected;
+                const isInactive = row.task.status.toUpperCase() === 'PENDING';
+
+                let statusMessage = '';
+                if (isWorkflowRejected && isInactive) {
+                  statusMessage = 'Workflow rejected';
+                } else if (row.isOverdue) {
+                  statusMessage = 'Due date expired';
+                } else if (isInactive) {
+                  statusMessage = 'Waiting for previous step';
+                }
 
                 return (
                   <tr key={row.task.id} className="border-b hover:bg-gray-50">
@@ -517,24 +551,30 @@ export default function MyTasksPage() {
 
                     {/* Actions */}
                     <td className="p-2">
-                      <div className="flex gap-2">
-                        <Button
-                          onClick={() => openActionDialog(row, 'approve')}
-                          disabled={!canAct}
-                          className="bg-[#8B4513] text-white hover:bg-[#A0522D] disabled:cursor-not-allowed disabled:opacity-50"
-                          size="sm"
-                        >
-                          Approve
-                        </Button>
-                        <Button
-                          onClick={() => openActionDialog(row, 'reject')}
-                          disabled={!canAct}
-                          variant="destructive"
-                          size="sm"
-                        >
-                          Reject
-                        </Button>
-                      </div>
+                      {statusMessage ? (
+                        <div className={`text-sm font-semibold ${statusMessageClass(statusMessage)}`}>
+                          {statusMessage}
+                        </div>
+                      ) : (
+                        <div className="flex gap-2">
+                          <Button
+                            onClick={() => openActionDialog(row, 'approve')}
+                            disabled={!canAct}
+                            className="bg-[#8B4513] text-white hover:bg-[#A0522D] disabled:cursor-not-allowed disabled:opacity-50"
+                            size="sm"
+                          >
+                            Approve
+                          </Button>
+                          <Button
+                            onClick={() => openActionDialog(row, 'reject')}
+                            disabled={!canAct}
+                            variant="destructive"
+                            size="sm"
+                          >
+                            Reject
+                          </Button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 );
