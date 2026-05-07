@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { uploadDocument } from '@/lib/api-client';
+import { useMultipartUpload } from '@/hooks/use-multipart-upload';
 import {
   Dialog,
   DialogContent,
@@ -40,6 +41,17 @@ export function UploadDocumentDialog({
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [percentComplete, setPercentComplete] = useState(0);
+
+  const {
+    initiateUpload,
+    uploadChunks,
+    completeUpload,
+    percentComplete: multipartPercent,
+    error: uploadError,
+  } = useMultipartUpload();
+
+  const MULTIPART_THRESHOLD = 100 * 1024 * 1024; // 100MB
 
   const onDrop = (acceptedFiles: File[]) => {
     const validFiles = acceptedFiles.filter(
@@ -68,6 +80,7 @@ export function UploadDocumentDialog({
     // Clear previous errors
     setError(null);
     setSuccess(false);
+    setPercentComplete(0);
 
     // Frontend validation
     if (!files.length) {
@@ -83,26 +96,76 @@ export function UploadDocumentDialog({
       return;
     }
 
+    const file = files[0];
     setIsUploading(true);
-    try {
-      console.log('Uploading document...');
-      
-      const result = await uploadDocument({
-        file: files[0],
-        title: documentName,
-        category: category,
-        tags: tags || undefined,
-        description: description || undefined,
-      });
-      
-      if (!result.success) {
-        setError(result.message || 'Upload failed');
-        setIsUploading(false);
-        return;
-      }
 
-      console.log('Upload successful!', result);
-      setSuccess(true);
+    try {
+      // Decide: multipart or single-part?
+      if (file.size > MULTIPART_THRESHOLD) {
+        // ===== MULTIPART UPLOAD (for files > 100MB) =====
+        console.log(`File ${file.name} is ${file.size} bytes, using multipart upload`);
+
+        try {
+          // Step 1: Initiate
+          const initResponse = await initiateUpload(file);
+          const { sessionId, partSize } = initResponse;
+
+          // Step 2: Upload chunks
+          await uploadChunks(file, sessionId, partSize);
+
+          // Step 3: Complete
+          const result = await completeUpload(sessionId, documentName, {
+            category: category || undefined,
+            tags: tags || undefined,
+            description: description || undefined,
+          });
+
+          if (!result.success) {
+            setError(result.message || 'Upload failed');
+            setIsUploading(false);
+            return;
+          }
+
+          console.log('Multipart upload successful!', result);
+          setSuccess(true);
+          setPercentComplete(100);
+        } catch (error) {
+          console.error('Multipart upload failed:', error);
+          const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+          setError(errorMessage);
+          setIsUploading(false);
+          return;
+        }
+      } else {
+        // ===== SINGLE-PART UPLOAD (for files ≤ 100MB) =====
+        console.log(`File ${file.name} is ${file.size} bytes, using single-part upload`);
+
+        const result = await uploadDocument(
+          {
+            file,
+            title: documentName,
+            category: category,
+            tags: tags || undefined,
+            description: description || undefined,
+          },
+          (progress) => {
+            // Update progress bar in real-time (KB by KB)
+            setPercentComplete(progress.percentage);
+            console.log(`Uploaded: ${(progress.loaded / 1024 / 1024).toFixed(2)}MB / ${(progress.total / 1024 / 1024).toFixed(2)}MB`);
+          }
+        );
+
+        if (!result.success) {
+          setError(result.message || 'Upload failed');
+          setIsUploading(false);
+          return;
+        }
+
+        console.log('Upload successful!', result);
+        setSuccess(true);
+        setPercentComplete(100);
+        setIsUploading(false);
+      }
 
       // Reset form on success
       setFiles([]);
@@ -111,15 +174,15 @@ export function UploadDocumentDialog({
       setTags('');
       setDescription('');
       setError(null);
-      
-      // Close dialog and refresh after a short delay
+
+      // Close dialog immediately after upload completes
       setTimeout(() => {
         onOpenChange(false);
+        setSuccess(false); // Reset success state
         if (onUploadSuccess) {
           onUploadSuccess();
         }
-      }, 1500);
-      
+      }, 800); // Close sooner so user sees brief success message
     } catch (error) {
       console.error('Upload failed:', error);
       const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
@@ -132,9 +195,11 @@ export function UploadDocumentDialog({
     <Dialog open={open} onOpenChange={(newOpen) => {
       setError(null);
       setSuccess(false);
+      setPercentComplete(0);
+      setIsUploading(false);
       onOpenChange(newOpen);
     }}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-lg">Upload Document</DialogTitle>
           <p className="text-xs text-gray-600 mt-1">
@@ -159,6 +224,24 @@ export function UploadDocumentDialog({
               <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
               <div className="flex-1">
                 <p className="text-sm font-medium text-green-800">Document uploaded successfully!</p>
+              </div>
+            </div>
+          )}
+
+          {/* Upload Progress Bar */}
+          {isUploading && (
+            <div className="flex flex-col gap-2">
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-gray-600">Uploading...</span>
+                <span className="text-sm font-semibold text-[#953002]">
+                  {(multipartPercent || percentComplete).toFixed(1)}%
+                </span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2.5">
+                <div
+                  className="bg-[#953002] h-2.5 rounded-full transition-all duration-300"
+                  style={{ width: `${multipartPercent || percentComplete}%` }}
+                />
               </div>
             </div>
           )}
