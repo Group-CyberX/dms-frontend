@@ -1,20 +1,19 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import PasswordInput from "@/components/ui/password-input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 
-export default function ResetPasswordPage() {
-  const [token, setToken] = useState<string | null>(null);
+function ResetPasswordForm() {
+
+  const searchParams = useSearchParams();
   const router = useRouter();
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    setToken(params.get("token"));
-  }, []);
+  const token = searchParams.get("token");
 
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -75,8 +74,7 @@ export default function ResetPasswordPage() {
 
           <div>
             <Label>New Password</Label>
-            <Input
-              type="password"
+            <PasswordInput
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
@@ -96,8 +94,7 @@ export default function ResetPasswordPage() {
 
           <div>
             <Label>Confirm Password</Label>
-            <Input
-              type="password"
+            <PasswordInput
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
             />
@@ -117,7 +114,7 @@ export default function ResetPasswordPage() {
           <div className="text-sm text-gray-600">
             <p>Password must contain:</p>
             <ul className="list-disc ml-5">
-              <li>At least 8 characters</li>
+              <li>At least 6 characters</li>
               <li>Lowercase letter</li>
               <li>Uppercase letter</li>
               <li>Number</li>
@@ -135,5 +132,13 @@ export default function ResetPasswordPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function ResetPasswordPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#F5F5F5]" />}>
+      <ResetPasswordForm />
+    </Suspense>
   );
 }
