@@ -145,7 +145,7 @@ export function formatRoleLabel(role: string | null): string {
 export function getFeatureByPath(pathname: string): SidebarFeatureKey | null {
   if (pathname === "/dashboard") return "dashboard";
   if (pathname.startsWith("/documents")) return "documents";
-  if (pathname.startsWith("/share")) return "documents";
+    if (pathname.startsWith("/share")) return null;
   if (pathname.startsWith("/search")) return "search";
   if (pathname.startsWith("/my-tasks")) return "myTasks";
   if (pathname.startsWith("/workflows")) return "workflows";

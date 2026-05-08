@@ -7,8 +7,8 @@ import { Input } from "@/components/ui/input"
 import PasswordInput from "@/components/ui/password-input"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
-import { useRouter } from "next/navigation";
-import { useAuthStore } from "@/store/auth-store";
+import { useRouter } from "next/navigation"
+import { useAuthStore } from "@/store/auth-store"
 
 // Login form component handling user authentication
 export function LoginForm() {

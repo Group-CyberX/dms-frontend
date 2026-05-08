@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import NavigationSideBar from "@/components/NavigationItem/NavigationSideBar";
 import { formatRoleLabel, canAccessPath } from "@/lib/access-control";
-import { useAuthStore } from "@/store/auth-store";
+import { useAuthStore, setupCrossWindowLogoutDetection } from "@/store/auth-store";
 import { Bell, Check, FileText, Search, ChevronDown } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
@@ -66,6 +66,7 @@ export default function MainLayout({
   const email = useAuthStore((state) => state.email);
   const role = useAuthStore((state) => state.role);
   const permissions = useAuthStore((state) => state.permissions);
+  const hasHydrated = useAuthStore((state) => state.hasHydrated);
 
   const [hydrated, setHydrated] = useState(false);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
@@ -79,8 +80,18 @@ export default function MainLayout({
     setHydrated(true);
   }, []);
 
+  // Setup cross-window logout detection
+  useEffect(() => {
+    const cleanup = setupCrossWindowLogoutDetection();
+    return cleanup;
+  }, []);
+
   useEffect(() => {
     if (!hydratedRef.current) return;
+
+    if (!hasHydrated) {
+      return;
+    }
 
     if (!token) {
       router.replace("/login");
@@ -90,7 +101,7 @@ export default function MainLayout({
     if (!canAccessPath(pathname, role, permissions)) {
       router.replace("/unauthorized");
     }
-  }, [token, pathname, role, permissions, router]);
+  }, [token, pathname, role, permissions, router, hasHydrated]);
 
   const displayName = useMemo(() => {
     if (!email) return "User";
@@ -200,6 +211,10 @@ export default function MainLayout({
   };
 
   if (!hydrated) {
+    return null;
+  }
+
+  if (!hasHydrated) {
     return null;
   }
 

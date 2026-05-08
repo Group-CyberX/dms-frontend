@@ -4,10 +4,11 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { UploadDocumentDialog } from '@/components/ui/upload-document-dialog';
-import { Plus, Folder, Eye, Download, Edit2, FileText, Loader, Share2 } from 'lucide-react';
-import { getDocuments, Document, getFolders, Folder as FolderType } from '@/lib/api-client';
-import { useAuthStore } from '@/store/auth-store';
+import { Plus, Folder, Eye, Download, Edit2, FileText, Loader, Trash2, Share2 } from 'lucide-react';
+import { getDocuments, Document, getFolders, Folder as FolderType, getWorkflows, WorkflowInstance, deleteDocument } from '@/lib/api-client';
 import { useRouter } from 'next/navigation';
+import { useAuthStore } from '@/store/auth-store';
+
 
 export default function DocumentsPage() {
   const router = useRouter();
@@ -17,6 +18,7 @@ export default function DocumentsPage() {
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [folders, setFolders] = useState<FolderType[]>([]);
+  const [docWorkflowStatus, setDocWorkflowStatus] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
@@ -33,12 +35,36 @@ export default function DocumentsPage() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [docsData, foldersData] = await Promise.all([
+      const [docsData, foldersData, workflowsData] = await Promise.all([
         getDocuments(),
         getFolders(),
+        getWorkflows(),
       ]);
       setDocuments(Array.isArray(docsData) ? docsData : []);
       setFolders(Array.isArray(foldersData) ? foldersData : []);
+      // Build map of documentId -> latest workflow status
+      try {
+        const wfList = Array.isArray(workflowsData) ? workflowsData as WorkflowInstance[] : [];
+        const map = new Map<string, { id: number; status?: string }>();
+
+        wfList.forEach((w) => {
+          const docId = (w.documentId ?? w.document_id ?? '') as string;
+          if (!docId) return;
+          const existing = map.get(docId);
+          if (!existing || (w.id && w.id > existing.id)) {
+            map.set(docId, { id: w.id, status: w.status });
+          }
+        });
+
+        const statusRecord: Record<string, string> = {};
+        map.forEach((v, k) => {
+          statusRecord[k] = v.status ?? '';
+        });
+
+        setDocWorkflowStatus(statusRecord);
+      } catch (e) {
+        console.warn('Failed to build workflow status map', e);
+      }
       setError(null);
     } catch (err) {
       console.error('Failed to fetch data:', err);
@@ -73,6 +99,20 @@ export default function DocumentsPage() {
   const getFileType = (filename: string) => {
     const ext = filename.split('.').pop()?.toUpperCase() || 'FILE';
     return ext;
+  };
+
+  const handleDelete = async (documentId: string, documentTitle: string) => {
+    const confirmed = window.confirm(`Are you sure you want to delete "${documentTitle}"? This action cannot be undone.`);
+    
+    if (!confirmed) return;
+    
+    try {
+      await deleteDocument(documentId);
+      setDocuments(documents.filter(doc => doc.document_id !== documentId));
+    } catch (err) {
+      console.error('Failed to delete document:', err);
+      setError('Failed to delete document');
+    }
   };
 
   // Filter documents based on search query and selected folder
@@ -132,7 +172,7 @@ export default function DocumentsPage() {
                   }`}
                 >
                   <div className="flex items-start gap-3">
-                    <Folder className="w-8 h-8 text-[#953002] flex-shrink-0 mt-1" />
+                    <Folder className="w-8 h-8 text-[#953002] shrink-0 mt-1" />
                     <div>
                       <p className={`font-medium ${
                         selectedFolderId === null ? 'text-[#953002]' : 'text-gray-900'
@@ -156,7 +196,7 @@ export default function DocumentsPage() {
                     }`}
                   >
                     <div className="flex items-start gap-3">
-                      <Folder className="w-8 h-8 text-[#953002] flex-shrink-0 mt-1" />
+                      <Folder className="w-8 h-8 text-[#953002] shrink-0 mt-1" />
                       <div>
                         <p className={`font-medium ${
                           selectedFolderId === folder.folder_id ? 'text-[#953002]' : 'text-gray-900'
@@ -228,6 +268,7 @@ export default function DocumentsPage() {
                       <th className="text-left py-3 px-4 font-semibold text-gray-900">Title</th>
                       <th className="text-left py-3 px-4 font-semibold text-gray-900">Type</th>
                       <th className="text-left py-3 px-4 font-semibold text-gray-900">Created</th>
+                      <th className="text-left py-3 px-4 font-semibold text-gray-900">Status</th>
                       <th className="text-left py-3 px-4 font-semibold text-gray-900">Locked</th>
                       <th className="text-left py-3 px-4 font-semibold text-gray-900">Actions</th>
                     </tr>
@@ -250,6 +291,34 @@ export default function DocumentsPage() {
                         <td className="py-3 px-4 text-gray-600">{getFileType(doc.title)}</td>
                         <td className="py-3 px-4 text-gray-600">{formatDate(doc.created_at)}</td>
                         <td className="py-3 px-4">
+
+                          {/* Status badge (if any) */}
+                          {(() => {
+                            const status = docWorkflowStatus[String(doc.document_id ?? '')];
+                            if (!status) {
+                              return (
+                                <span className="px-3 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-700">None</span>
+                              );
+                            }
+
+                            const normalized = String(status).toUpperCase();
+                            if (normalized === 'PENDING_APPROVAL') {
+                              return <span className="px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">Pending Approval</span>;
+                            }
+
+                            if (normalized === 'APPROVED') {
+                              return <span className="px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">Approved</span>;
+                            }
+
+                            if (normalized === 'REJECTED') {
+                              return <span className="px-3 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700">Rejected</span>;
+                            }
+
+                            return <span className="px-3 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-700">{status}</span>;
+                          })()}
+                          
+                        </td>
+                        <td className="py-3 px-4">
                           <span className={`px-3 py-1 rounded-full text-xs font-medium ${
                             doc.is_locked ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
                           }`}>
@@ -266,6 +335,16 @@ export default function DocumentsPage() {
                             </button>
                             <button className="p-1 hover:bg-gray-200 rounded transition" title="Download">
                               <Download className="w-4 h-4 text-gray-600" />
+                            </button>
+                            <button 
+                              className="p-1 hover:bg-red-100 rounded transition" 
+                              title="Delete"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDelete(doc.document_id, doc.title);
+                              }}
+                            >
+                              <Trash2 className="w-4 h-4 text-red-600" />
                             </button>
                             <button className="p-1 hover:bg-gray-200 rounded transition" title="Share">
                               <Share2 className="w-4 h-4 text-gray-600" />
@@ -294,7 +373,7 @@ export default function DocumentsPage() {
 
 function FileIcon({ type }: { type: string }) {
   return (
-    <div className="flex-shrink-0">
+    <div className="shrink-0">
       <div className="w-8 h-8 rounded bg-gray-100 flex items-center justify-center">
         <FileText className="w-5 h-5 text-gray-600" />
       </div>

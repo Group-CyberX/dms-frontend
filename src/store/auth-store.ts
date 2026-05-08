@@ -9,12 +9,24 @@ export interface AuthPayload {
   permissions: Record<string, boolean>;
 }
 
+interface AuthData {
+  token: string;
+  email: string;
+  role: string;
+  userId?: string;
+  userName?: string;
+  permissions?: Record<string, boolean>;
+}
+
 interface AuthState {
   accessToken: string | null;
   refreshToken: string | null;
   email: string | null;
   role: string | null;
+  userId: string | null;
+  userName: string | null;
   permissions: Record<string, boolean>;
+  hasHydrated: boolean;
 
   setAuth: (data: AuthPayload) => void;
   logout: () => void;
@@ -32,7 +44,10 @@ export const useAuthStore = create<AuthState>()(
       refreshToken: null,
       email: null,
       role: null,
+      userId: null,
+      userName: null,
       permissions: {},
+      hasHydrated: false,
 
       // Set authentication data after login
       setAuth: (data) => {
@@ -47,6 +62,7 @@ export const useAuthStore = create<AuthState>()(
           email: data.email,
           role: data.role,
           permissions: data.permissions ?? {},
+          hasHydrated: true,
         });
       },
 
@@ -64,6 +80,7 @@ export const useAuthStore = create<AuthState>()(
           email: null,
           role: null,
           permissions: {},
+          hasHydrated: true,
         });
       },
 
@@ -92,6 +109,41 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: "dms-auth-store",
+      onRehydrateStorage: () => (state) => {
+        // Set hasHydrated to true when storage is rehydrated
+        if (state) {
+          state.hasHydrated = true;
+        }
+      },
     }
   )
 );
+
+// Setup cross-window logout detection
+// Call this once on app initialization to listen for logout in other windows
+export const setupCrossWindowLogoutDetection = () => {
+  if (typeof window === "undefined") return;
+
+  const handleStorageChange = (event: StorageEvent) => {
+    // ONLY check for dms-auth-store key (Zustand persist middleware key)
+    // This fires once per logout, avoiding duplicate logout() calls
+    if (event.key === "dms-auth-store" && event.newValue === null) {
+      // Auth store was removed in another window
+      const currentState = useAuthStore.getState();
+      
+      // Only logout if we still have a token (guard against duplicate calls)
+      if (currentState.accessToken) {
+        useAuthStore.getState().logout();
+        console.log("[Cross-Window Logout] Session invalidated from another window");
+      }
+    }
+  };
+
+  // Add listener for storage changes from OTHER windows
+  window.addEventListener("storage", handleStorageChange);
+
+  // Return cleanup function
+  return () => {
+    window.removeEventListener("storage", handleStorageChange);
+  };
+};
