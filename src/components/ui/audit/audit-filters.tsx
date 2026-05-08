@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Filter } from "lucide-react";
+import { auditService } from "@/lib/auditService";
 import {
     Select,
     SelectContent,
@@ -34,25 +35,23 @@ export default function AuditFilter({ onFilter, onReset }: AuditFilterProps) {
     };
 
     const handleApplyFilters = async () => {
-    try {
-        const params = new URLSearchParams();
-        
-        if (filters.userId && filters.userId !== "all") params.append("userId", filters.userId);
-        if (filters.action && filters.action !== "all") params.append("action", filters.action);
-        
-        // SEND RAW DATE ONLY (e.g., "2026-04-01")
-        if (filters.fromDate) params.append("fromDate", filters.fromDate);
-        if (filters.toDate) params.append("toDate", filters.toDate);
+        try {
+            const params = new URLSearchParams();
+            
+            if (filters.userId && filters.userId !== "all") params.append("userId", filters.userId);
+            if (filters.action && filters.action !== "all") params.append("action", filters.action);
+            if (filters.fromDate) params.append("fromDate", filters.fromDate);
+            if (filters.toDate) params.append("toDate", filters.toDate);
 
-        const response = await fetch(`http://localhost:8081/admin/logs/filter?${params.toString()}`);
-        const data = await response.json();
-        onFilter(data);
-    } catch (error) {
-        console.error("Error filtering logs:", error);
-    }
-};
+            const data = await auditService.getFilteredLogs(params);
+            onFilter(data); 
+        } catch (error: any) {
+            // Alert the user if it's a 403
+            alert(error.message || "Failed to filter logs");
+            console.error("Error filtering logs:", error);
+        }
+    };
     
-
     const handleClear = () => {
         setFilters({
             userId: "all",

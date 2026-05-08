@@ -180,13 +180,13 @@ export default function DocumentDetailPage() {
       setDownloadingVersionId(versionId);
       const blob = await downloadDocumentVersion(document.document_id, versionId);
       const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
+      const a = window.document.createElement('a');
       a.href = url;
       a.download = `${document.title}-v${versionId.substring(0, 8)}`;
-      document.body.appendChild(a);
+      window.document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      window.document.body.removeChild(a);
     } catch (err) {
       console.error('Error downloading version:', err);
       alert(err instanceof Error ? err.message : 'Failed to download version');

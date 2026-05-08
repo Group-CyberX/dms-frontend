@@ -13,9 +13,7 @@ export default function MainLayout({
         <NavigationSideBar />
         
         <div className="flex flex-col flex-1 overflow-hidden">
-          <header className="flex items-center border-b px-4 h-16 bg-white">
-            <SidebarTrigger />
-          </header>
+          <Header />
 
           <main className="flex-1 overflow-y-auto p-6">
             {children}

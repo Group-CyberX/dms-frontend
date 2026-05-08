@@ -3,6 +3,7 @@
  */
 export interface Notification {
   notificationId: string; 
+  title?: string;
   user_id: string;        
   message: string;        
   read?: boolean; 

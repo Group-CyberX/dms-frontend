@@ -54,7 +54,7 @@ export default function AllNotificationsPage() {
     };
 
     const filteredNotifications = notifications.filter(n => {
-        const title = (n.title || "").toLowerCase(); 
+        const title = ((n as any).title || "").toLowerCase(); 
         const message = n.message.toLowerCase();
         const query = searchQuery.toLowerCase();
 
@@ -146,7 +146,7 @@ export default function AllNotificationsPage() {
                                 <div className="flex-1 space-y-1">
                                     <div className="flex justify-between items-start">
                                         <h3 className={`text-sm ${n.isRead ? 'font-medium text-gray-500' : 'font-bold text-gray-800'}`}>
-                                            {n.title} 
+                                            {(n as any).title} 
                                         </h3>
                                         <button 
                                             onClick={(e) => handleDelete(e, n.notificationId)}
@@ -188,7 +188,7 @@ export default function AllNotificationsPage() {
                                 </div>
                                 <div>
                                     <h2 className="text-lg font-bold text-gray-900">
-                                        {selectedNotification.title || "Notification"}
+                                        {(selectedNotification as any).title || "Notification"}
                                     </h2>
                                     <p className="text-xs text-gray-500">Document Notification</p>
                                 </div>

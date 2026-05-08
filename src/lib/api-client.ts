@@ -8,9 +8,9 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081/a
 /**
  * Get authorization header with JWT token
  */
-function getAuthHeader() {
+function getAuthHeader(): Record<string, string> {
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-  return token ? { 'Authorization': `Bearer ${token}` } : {};
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 export interface DocumentUploadResponse {
@@ -72,14 +72,16 @@ export async function uploadDocument(
     formData.append('description', params.description);
   }
 
+  const headers: HeadersInit = {
+    ...getAuthHeader(),
+    // Don't set Content-Type header - browser will set it automatically
+    // with the correct boundary for multipart/form-data
+  };
+
   const response = await fetch(`${API_BASE_URL}/documents/upload`, {
     method: 'POST',
     body: formData,
-    headers: {
-      ...getAuthHeader(),
-      // Don't set Content-Type header - browser will set it automatically
-      // with the correct boundary for multipart/form-data
-    },
+    headers,
   });
 
   if (!response.ok) {
