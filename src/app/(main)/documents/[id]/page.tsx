@@ -6,6 +6,7 @@ import { useDropzone } from 'react-dropzone';
 import { Button } from '@/components/ui/button';
 import { getDocument, getDocumentVersions, Document, DocumentVersion, getDocumentTags, addTagToDocument, Tag, uploadNewVersion, downloadDocumentVersion, restoreDocumentVersion, deleteDocumentVersion, getWorkflows, WorkflowInstance } from '@/lib/api-client';
 import  ShareDocumentDialog  from '@/components/ui/share/share-document-dialog';
+import { DocumentPreview } from '@/components/ui/DocumentPreview';
 import {
   ArrowLeft,
   Share2,
@@ -255,8 +256,9 @@ export default function DocumentDetailPage() {
 
     try {
       setAddingTag(true);
-      const newTag = await addTagToDocument(document.document_id, newTagInput.trim());
-      setTags([...tags, newTag]);
+      await addTagToDocument(document.document_id, newTagInput.trim());
+      const refreshedTags = await getDocumentTags(document.document_id);
+      setTags(refreshedTags || []);
       setNewTagInput('');
     } catch (err) {
       console.error('Error adding tag:', err);

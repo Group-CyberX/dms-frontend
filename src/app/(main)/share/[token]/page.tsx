@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Download, FileText } from "lucide-react";
+import { useAuthStore } from "@/store/auth-store";
 
 type ShareAccessResponse = {
   documentId: string;
@@ -19,38 +20,32 @@ type ShareComment = {
   createdAt?: string;
 };
 
-const API = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8081";
+const API = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8081/api").replace(/\/api\/?$/, "");
 
 export default function SharePage() {
   const params = useParams();
   // Token from URL used to access shared document
   const shareToken = params.token as string;
+  const accessToken = useAuthStore((state) => state.accessToken);
 
   const [password, setPassword] = useState("");
   const [data, setData] = useState<ShareAccessResponse | null>(null);
   const [comment, setComment] = useState("");
   const [comments, setComments] = useState<ShareComment[]>([]);
   const [documentName, setDocumentName] = useState("Document");
-  // UI states for loading and access control
   const [downloading, setDownloading] = useState(false);
   const [checkingAccess, setCheckingAccess] = useState(true);
   const [needsPassword, setNeedsPassword] = useState(false);
-  // States for editing comments
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
 
-  // Helper function to attach JWT token to requests
-  const getAuthHeaders = () => {
-    const jwt = localStorage.getItem("token");
-    return jwt ? { Authorization: `Bearer ${jwt}` } : {};
-  };
-  
-  // Check whether user can access the shared document
+  const getJwt = () =>
+    accessToken || (typeof window !== "undefined" ? localStorage.getItem("accessToken") : null);
+
   const handleAccess = async (value: string = password) => {
     setCheckingAccess(true);
+    const jwt = getJwt();
 
-    const jwt = localStorage.getItem("token");
-    // Send request to backend to validate access (password / auth)
     const res = await fetch(`${API}/api/share-links/${shareToken}/access`, {
       method: "POST",
       headers: {
@@ -60,7 +55,6 @@ export default function SharePage() {
       body: JSON.stringify({ password: value }),
     });
 
-    // Handle access errors (invalid password, expired link, etc.)
     if (!res.ok) {
       const text = await res.text();
       if (text.includes("Password required") || text.includes("Invalid password")) {
@@ -71,17 +65,14 @@ export default function SharePage() {
       setCheckingAccess(false);
       return;
     }
-    // On successful access, load document details and comments if allowed
+
     const d = await res.json();
     setData(d);
     setDocumentName(d.documentName || "Document");
     setNeedsPassword(false);
     setCheckingAccess(false);
 
-    // If comments are allowed, load existing comments for the document
-    if (d.allowComments) {
-      loadComments();
-    }
+    if (d.allowComments) loadComments();
   };
 
   // Reset state when share token changes
@@ -96,9 +87,10 @@ export default function SharePage() {
 
   // Fetch all comments for this shared document
   const loadComments = async () => {
+    const jwt = getJwt();
     const res = await fetch(`${API}/api/comments/${shareToken}`, {
       headers: {
-        ...getAuthHeaders(),
+        ...(jwt && { Authorization: `Bearer ${jwt}` }),
       },
     });
 
@@ -111,7 +103,7 @@ export default function SharePage() {
 
     const data = await res.json();
     setComments(Array.isArray(data) ? data : []);
- };
+  };
 
   // Download document if permission is granted
  const handleDownload = async () => {
@@ -122,8 +114,7 @@ export default function SharePage() {
 
     try {
       setDownloading(true);
-
-      const jwt = localStorage.getItem("token");
+      const jwt = getJwt();
 
       const res = await fetch(
         `${API}/api/share-links/${shareToken}/download?password=${password}`,
@@ -141,14 +132,13 @@ export default function SharePage() {
         alert(text || "Download failed");
         return;
       }
-      
+
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
       a.download = documentName;
       a.click();
-
     } catch {
       alert("Error downloading file");
     } finally {
@@ -162,15 +152,15 @@ export default function SharePage() {
       alert("Comment cannot be empty");
       return;
     }
-    // Send POST request to backend to create a new comment
+
+    const jwt = getJwt();
     const res = await fetch(`${API}/api/comments/${shareToken}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...getAuthHeaders(),
+        ...(jwt && { Authorization: `Bearer ${jwt}` }),
       },
       body: JSON.stringify({ content: comment }),
-      
     });
 
     // Handle errors when adding comment (permissions, validation, etc.)
@@ -186,11 +176,12 @@ export default function SharePage() {
 
   // Edit an existing comment by its ID
   const editComment = async (id: string, content: string) => {
+    const jwt = getJwt();
     const res = await fetch(`${API}/api/comments/${id}`, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
-        ...getAuthHeaders(),
+        ...(jwt && { Authorization: `Bearer ${jwt}` }),
       },
       body: JSON.stringify({ content }),
     });
@@ -205,10 +196,11 @@ export default function SharePage() {
 
   // Delete a comment by its ID after user confirmation
   const deleteComment = async (id: string) => {
+    const jwt = getJwt();
     const res = await fetch(`${API}/api/comments/${id}`, {
       method: "DELETE",
       headers: {
-        ...getAuthHeaders(),
+        ...(jwt && { Authorization: `Bearer ${jwt}` }),
       },
     });
 
@@ -222,49 +214,52 @@ export default function SharePage() {
 
   // Show password input if required or access is still checking
   if (!data) {
-  if (checkingAccess && !needsPassword) {
+    if (checkingAccess && !needsPassword) {
+      return (
+        <div className="flex items-center justify-center min-h-screen bg-gray-100">
+          <div className="bg-white p-6 rounded-lg shadow-lg w-80">
+            <h2 className="text-lg font-semibold mb-3 text-gray-800">Access Document</h2>
+            <p className="text-sm text-gray-600">Checking link access...</p>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-100">
         <div className="bg-white p-6 rounded-lg shadow-lg w-80">
           <h2 className="text-lg font-semibold mb-3 text-gray-800">Access Document</h2>
-          <p className="text-sm text-gray-600">Checking link access...</p>
+
+          <div className="relative mb-3">
+            <input
+              type="password"
+              className="border border-gray-300 p-2 w-full rounded-md text-sm focus:ring-2 focus:ring-[#953002] focus:border-transparent pr-10"
+              placeholder="Enter password"
+              name={`share-access-password-${shareToken}`}
+              autoComplete="new-password"
+              autoCorrect="off"
+              autoCapitalize="none"
+              spellCheck={false}
+              data-1p-ignore="true"
+              data-lpignore="true"
+              onChange={(e) => setPassword(e.target.value)}
+              onKeyPress={(e) => e.key === "Enter" && handleAccess()}
+            />
+          </div>
+
+          <Button
+            onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+              e.preventDefault();
+              handleAccess();
+            }}
+            className="w-full bg-[#953002] hover:bg-[#7a2600] text-white py-2 rounded-md"
+          >
+            Access Document
+          </Button>
         </div>
       </div>
     );
   }
-
-  return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-100">
-      <div className="bg-white p-6 rounded-lg shadow-lg w-80">
-        <h2 className="text-lg font-semibold mb-3 text-gray-800">Access Document</h2>
-
-        <div className="relative mb-3">
-          <input
-            type="password"
-            className="border border-gray-300 p-2 w-full rounded-md text-sm focus:ring-2 focus:ring-[#953002] focus:border-transparent pr-10"
-            placeholder="Enter password"
-            name={`share-access-password-${shareToken}`}
-            autoComplete="new-password"
-            autoCorrect="off"
-            autoCapitalize="none"
-            spellCheck={false}
-            data-1p-ignore="true"
-            data-lpignore="true"
-            onChange={(e) => setPassword(e.target.value)}
-            onKeyPress={(e) => e.key === "Enter" && handleAccess()}
-          />
-        </div>
-
-        <Button
-          onClick={handleAccess}
-          className="w-full bg-[#953002] hover:bg-[#7a2600] text-white py-2 rounded-md"
-        >
-          Access Document
-        </Button>
-      </div>
-    </div>
-  );
- }
 
   // Main document view after access is granted
   return (
@@ -324,21 +319,16 @@ export default function SharePage() {
                 <p className="text-gray-500 text-center py-8">No comments yet</p>
               ) : (
                 comments.map((c) => (
-                  <div
-                    key={c.id}
-                    className="bg-gray-50 border border-gray-200 p-4 rounded-md"
-                  >
+                  <div key={c.id} className="bg-gray-50 border border-gray-200 p-4 rounded-md">
                     <p className="text-gray-700">{c.content}</p>
 
-                    <p className="text-xs text-gray-500 mt-2">
-                      {new Date(c.createdAt).toLocaleString()}
-                    </p>
+                    {c.createdAt && <p className="text-xs text-gray-500 mt-2">{new Date(c.createdAt).toLocaleString()}</p>}
 
                     {/* ACTION BUTTONS */}
                     <div className="flex gap-2 mt-3">
-                      {/* Edit Button */}
                       <button
-                        onClick={() => {
+                        onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                          e.preventDefault();
                           setEditingId(c.id);
                           setEditText(c.content);
                         }}
@@ -347,14 +337,9 @@ export default function SharePage() {
                         Edit
                       </button>
 
-                      {/* Edit Input */}
                       {editingId === c.id && (
                         <div className="mt-2">
-                          <input
-                            value={editText}
-                            onChange={(e) => setEditText(e.target.value)}
-                            className="border px-2 py-1 rounded w-full"
-                          />
+                          <input value={editText} onChange={(e) => setEditText(e.target.value)} className="border px-2 py-1 rounded w-full" />
                           <button
                             onClick={() => {
                               editComment(c.id, editText);
@@ -367,7 +352,6 @@ export default function SharePage() {
                         </div>
                       )}
 
-                      {/* Delete Button */}
                       <button
                         onClick={() => {
                           const confirmDelete = confirm("Are you sure you want to delete?");

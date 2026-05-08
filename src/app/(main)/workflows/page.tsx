@@ -5,6 +5,7 @@ import { Plus, X, ArrowRight, Calendar, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { fetchWithAuth } from '@/lib/api-client';
 
 //Represents an approver in the workflow
 interface Approver {
@@ -93,7 +94,7 @@ export default function WorkflowBuilderPage() {
   // Fetch documents, templates, folders, and users on component mount
   // Fetch documents
   useEffect(() => {
-    fetch("http://localhost:8081/api/documents")
+    fetchWithAuth("http://localhost:8081/api/documents")
       .then(async (res) => {
         if (!res.ok) {
           throw new Error(`Documents request failed: ${res.status}`);
@@ -111,7 +112,7 @@ export default function WorkflowBuilderPage() {
 
   // Fetch workflow templates
   useEffect(() => {
-    fetch('http://localhost:8081/api/templates')
+    fetchWithAuth('http://localhost:8081/api/templates')
       .then(async (res) => {
         if (!res.ok) {
           throw new Error(`Templates request failed: ${res.status}`);
@@ -129,7 +130,7 @@ export default function WorkflowBuilderPage() {
 
   // Fetch folders for document type selection
   useEffect(() => {
-    fetch('http://localhost:8081/api/folders')
+    fetchWithAuth('http://localhost:8081/api/folders')
       .then(async (res) => {
         if (!res.ok) {
           throw new Error(`Folders request failed: ${res.status}`);
@@ -147,7 +148,7 @@ export default function WorkflowBuilderPage() {
 
   // Fetch users and filter eligible approvers
   useEffect(() => {
-    fetch("http://localhost:8081/api/users")
+    fetchWithAuth("http://localhost:8081/api/users")
       .then(async (res) => {
         if (!res.ok) {
           throw new Error(`Users request failed: ${res.status}`);
@@ -183,7 +184,7 @@ export default function WorkflowBuilderPage() {
     // If a template is selected, fetch its steps to populate approvers
     if (templateId) {
       try {
-        const res = await fetch(`http://localhost:8081/api/templates/${templateId}/steps`);
+        const res = await fetchWithAuth(`http://localhost:8081/api/templates/${templateId}/steps`);
 
         if (!res.ok) {
           throw new Error(`Template steps request failed: ${res.status}`);
@@ -304,7 +305,7 @@ export default function WorkflowBuilderPage() {
 
     // Send workflow creation request to backend
     try {
-      const response = await fetch("http://localhost:8081/api/workflows", {
+      const response = await fetchWithAuth("http://localhost:8081/api/workflows", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)

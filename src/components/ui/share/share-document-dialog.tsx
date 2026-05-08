@@ -9,11 +9,13 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { X, Link2, Lock, Calendar, ChevronDown, Eye, EyeOff } from "lucide-react";
+import { fetchWithAuth } from "@/lib/api-client";
 
 // Base API URL from environment
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL!;
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8081/api";
+const API_ROOT_URL = API_BASE_URL.replace(/\/api\/?$/, "");
 // Share link API endpoint
-const SHARE_LINK_ENDPOINT = `${API_BASE_URL}/api/share-links`;
+const SHARE_LINK_ENDPOINT = `${API_ROOT_URL}/api/share-links`;
 const COPY_TIMEOUT_MS = 2000;
 const DEFAULT_EXPIRY_DAYS = 7;
 
@@ -55,7 +57,6 @@ export default function ShareDocumentDialog({
     const [token, setToken] = useState<string>("");
     const [loading, setLoading] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
-
     // Reset dialog state whenever it is opened or document changes
     useEffect(() => {
         if (!open) {
@@ -99,31 +100,27 @@ export default function ShareDocumentDialog({
             // Trim password to avoid sending empty spaces
             const normalizedPassword = password.trim();
 
-            // Retrieve JWT token for authenticated API request
-            const jwt = localStorage.getItem("token"); 
+            // Send POST request to backend to create share link
+            const response = await fetchWithAuth(SHARE_LINK_ENDPOINT, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    documentId: documentId,
+                    accessLevel,
+                    expiryDays: linkExpiry,
+                    requireAuth,
+                    allowDownload,
+                    allowComments,
+                    password: normalizedPassword ? normalizedPassword : null,
+                }),
+            });
 
-    // Send POST request to backend to create share link
-    const response = await fetch(SHARE_LINK_ENDPOINT, {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${jwt}`, 
-        },
-                    body: JSON.stringify({
-                        documentId: documentId,
-                        accessLevel,
-                        expiryDays: linkExpiry,
-                        requireAuth,
-                        allowDownload,
-                        allowComments,
-                        password: normalizedPassword ? normalizedPassword : null,
-                    }),
-                });
-
-                if (!response.ok) {
-                    const text = await response.text();
-                    throw new Error(text || "Failed to generate share link");
-                }
+            if (!response.ok) {
+                const text = await response.text();
+                throw new Error(text || "Failed to generate share link");
+            }
 
                 const data = await response.json();
                 setGeneratedLink(data.url);
@@ -143,15 +140,13 @@ export default function ShareDocumentDialog({
     // Revoke an existing share link using its token
     const handleRevoke = async (): Promise<void> => {
         try {
-            const jwt = localStorage.getItem("token");
             // Send DELETE request to backend to revoke share link
-            const response = await fetch(
+            const response = await fetchWithAuth(
                 `${SHARE_LINK_ENDPOINT}/${token}`,
                 {
                     method: "DELETE",
                     headers: {
                         "Content-Type": "application/json",
-                        ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}),
                     },
                 }
             );

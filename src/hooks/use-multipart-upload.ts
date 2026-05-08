@@ -213,6 +213,12 @@ export const useMultipartUpload = () => {
 
   return {
     state,
+    percentComplete: state.percentComplete,
+    error: state.error,
+    isUploading: state.isUploading,
+    sessionId: state.sessionId,
+    uploadedBytes: state.uploadedBytes,
+    totalBytes: state.totalBytes,
     initiateUpload,
     uploadChunks,
     completeUpload,
@@ -222,3 +228,4 @@ export const useMultipartUpload = () => {
     getProgress,
   };
 };
+

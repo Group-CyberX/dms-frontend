@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/store/auth-store';
 import ApproveTaskDialog from '@/components/ui/workflow/approve-task-dialog';
 import RejectTaskDialog from '@/components/ui/workflow/reject-task-dialog';
+import { fetchWithAuth } from '@/lib/api-client';
 
 //Logged-in user details
 type CurrentUser = {
@@ -22,6 +23,7 @@ type ApproverOption = {
 type WorkflowInstance = {
   id: number;
   documentId: string;
+  document_id?: string;
   templateId: number | null;
   workflowName: string;
   description?: string;
@@ -151,7 +153,7 @@ const formatAssigneeLabel = (
 };
 
 export default function MyTasksPage() {
-  const token = useAuthStore((state) => state.token);
+  const token = useAuthStore((state) => state.accessToken);
   const [authToken, setAuthToken] = useState<string | null>(token);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [approvers, setApprovers] = useState<ApproverOption[]>([]);
@@ -190,7 +192,7 @@ export default function MyTasksPage() {
 
       try {
         // Fetch current user details
-        const currentUserResponse = await fetch('http://localhost:8081/api/users/me', {
+        const currentUserResponse = await fetchWithAuth('http://localhost:8081/api/users/me', {
           headers,
         });
 
@@ -206,9 +208,9 @@ export default function MyTasksPage() {
 
       // Fetch approvers, workflows, and documents in parallel
       const [approverResponse, workflowResponse, documentResponse] = await Promise.all([
-        fetch('http://localhost:8081/api/users'),
-        fetch('http://localhost:8081/api/workflows'),
-        fetch('http://localhost:8081/api/documents'),
+        fetchWithAuth('http://localhost:8081/api/users'),
+        fetchWithAuth('http://localhost:8081/api/workflows'),
+        fetchWithAuth('http://localhost:8081/api/documents'),
       ]);
 
       if (!approverResponse.ok) {
@@ -243,7 +245,7 @@ export default function MyTasksPage() {
       // Fetch steps for each unique template ID in parallel
       const templateStepEntries = await Promise.all(
         uniqueTemplateIds.map(async (templateId) => {
-          const stepResponse = await fetch(`http://localhost:8081/api/templates/${templateId}/steps`);
+          const stepResponse = await fetchWithAuth(`http://localhost:8081/api/templates/${templateId}/steps`);
 
           if (!stepResponse.ok) {
             return [String(templateId), [] as WorkflowTemplateStep[]] as const;
@@ -259,7 +261,7 @@ export default function MyTasksPage() {
       // For each workflow, fetch its tasks and flatten the results
       const workflowTasksNested = await Promise.all(
         (Array.isArray(workflowData) ? workflowData : []).map(async (workflow: WorkflowInstance) => {
-          const taskResponse = await fetch(`http://localhost:8081/api/tasks/instance/${workflow.id}`);
+          const taskResponse = await fetchWithAuth(`http://localhost:8081/api/tasks/instance/${workflow.id}`);
 
           if (!taskResponse.ok) {
             return [] as WorkflowTask[];
@@ -294,8 +296,9 @@ export default function MyTasksPage() {
         // Find the related workflow for this task
         const workflow = workflows.find((item) => item.id === task.instanceId) ?? null;
         // Find the related document for this workflow
+        const workflowDocumentId = workflow?.documentId ?? workflow?.document_id ?? '';
         const document = documents.find(
-          (item) => String(item.document_id ?? item.id ?? '') === String(workflow?.documentId ?? '')
+          (item) => String(item.document_id ?? item.id ?? '') === String(workflowDocumentId)
         );
         const templateStep =
           workflow?.templateId !== null && workflow?.templateId !== undefined
@@ -371,13 +374,11 @@ export default function MyTasksPage() {
 
   // Function to call API for approving/rejecting a task and then refresh data
   const refreshAfterAction = async (taskId: number, action: 'approve' | 'reject', comment: string) => {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-
-    const response = await fetch(`http://localhost:8081/api/tasks/${taskId}/${action}`, {
+    const response = await fetchWithAuth(`http://localhost:8081/api/tasks/${taskId}/${action}`, {
       method: 'POST',
-      headers,
+      headers: {
+        'Content-Type': 'application/json',
+      },
       body: JSON.stringify({ comment }),
     });
 

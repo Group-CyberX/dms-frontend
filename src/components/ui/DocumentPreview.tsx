@@ -66,7 +66,7 @@ export function DocumentPreview({ url, type, title }: DocumentPreviewProps) {
         }
 
         renderTask = page.render({
-          canvasContext: context,
+          canvas: canvas,
           viewport: viewport,
         });
         

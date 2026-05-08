@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef } from "react";
 import { Bell, Search, Check, FileText, Clock } from "lucide-react";
 import { formatDistanceToNow } from 'date-fns';
+import { useAuthStore } from "@/store/auth-store";
+import { formatRoleLabel } from "@/lib/access-control";
 
 function TimeAgo({ date }: { date: string }) {
   const [time, setTime] = useState(formatDistanceToNow(new Date(date), { addSuffix: true }));
@@ -43,7 +45,26 @@ export function Header() {
     const [isOpen, setIsOpen] = useState(false);
     const [selectedNotification, setSelectedNotification] = useState<any | null>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
+  const email = useAuthStore((state) => state.email);
+  const role = useAuthStore((state) => state.role);
   const testUserId = "0b0f8543-672e-4a5a-bb8d-99da74f94f90";
+
+  const displayName = email
+    ? email
+        .split("@")[0]
+        .replace(/[._-]+/g, " ")
+        .replace(/\b\w/g, (match) => match.toUpperCase())
+    : "User";
+
+  const initials = displayName
+    .split(" ")
+    .map((part) => part[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+
+  const roleLabel = formatRoleLabel(role);
 
   // fetch notification from the backend
   useEffect(() => {
@@ -122,10 +143,10 @@ const handleMarkAllRead = async () => {
     }, [isOpen]);
 
   return (
-    <header className="flex flex-1 h-16 items-center justify-between border-b bg-white px-8">
+    <header className="flex h-16 items-center justify-between border-b bg-white px-8">
       {/* Search Bar */}
       <div className="relative w-96">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Search className="absolute left- top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <input 
           type="text" 
           placeholder="Search documents, tasks, workflows..." 
@@ -216,11 +237,11 @@ const handleMarkAllRead = async () => {
         {/* User profile */}
         <div className="flex items-center gap-3 border-l pl-6">
           <div className="text-right hidden sm:block">
-            <p className="text-sm font-semibold text-gray-800">Kamal Gunarathne</p>
-            <p className="text-[11px] text-gray-500 uppercase tracking-tighter">System Administrator</p>
+            <p className="text-sm font-semibold text-gray-800">{displayName}</p>
+            <p className="text-[11px] text-gray-500 uppercase tracking-tighter">{roleLabel}</p>
           </div>
           <div className="h-10 w-10 rounded-full bg-[#953002] flex items-center justify-center text-white font-bold shadow-sm">
-            KG
+            {initials || "U"}
           </div>
         </div>
       </div>

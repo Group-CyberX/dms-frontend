@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ChevronDown, X } from "lucide-react";
+import { fetchWithAuth } from '@/lib/api-client';
 
 type StepApprover = {
   stepOrder: number;
@@ -106,8 +107,8 @@ export default function CreateWorkflowTemplateDialog({
     try {
       // Fetch template details and steps in parallel
       const [templateResponse, stepsResponse] = await Promise.all([
-        fetch(`http://localhost:8081/api/templates/${id}`),
-        fetch(`http://localhost:8081/api/templates/${id}/steps`),
+        fetchWithAuth(`http://localhost:8081/api/templates/${id}`),
+        fetchWithAuth(`http://localhost:8081/api/templates/${id}/steps`),
       ]);
 
       if (!templateResponse.ok) {
@@ -166,7 +167,7 @@ export default function CreateWorkflowTemplateDialog({
 
   // Fetch folders for document type selection
   useEffect(() => {
-    fetch('http://localhost:8081/api/folders')
+    fetchWithAuth('http://localhost:8081/api/folders')
       .then(async (res) => {
         if (!res.ok) {
           throw new Error(`Folders request failed: ${res.status}`);
@@ -184,7 +185,7 @@ export default function CreateWorkflowTemplateDialog({
 
   // Fetch users for approver selection and filter eligible approvers
   useEffect(() => {
-    fetch('http://localhost:8081/api/users')
+    fetchWithAuth('http://localhost:8081/api/users')
       .then(async (res) => {
         if (!res.ok) {
           throw new Error(`Users request failed: ${res.status}`);
@@ -285,7 +286,7 @@ export default function CreateWorkflowTemplateDialog({
     try {
       setLoading(true);
       // Send POST request for new template or PUT request for updating existing template
-      const response = await fetch(
+      const response = await fetchWithAuth(
         templateId ? `http://localhost:8081/api/templates/${templateId}` : 'http://localhost:8081/api/templates',
         {
           method: templateId ? 'PUT' : 'POST',

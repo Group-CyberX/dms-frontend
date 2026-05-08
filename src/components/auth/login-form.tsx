@@ -4,13 +4,16 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { loginSchema, LoginFormValues } from "@/lib/schemas/login-schema"
 import { Input } from "@/components/ui/input"
+import PasswordInput from "@/components/ui/password-input"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { useRouter } from "next/navigation"
 import { useAuthStore } from "@/store/auth-store"
 
+// Login form component handling user authentication
 export function LoginForm() {
 
+  // Next.js router for navigation after login
   const router = useRouter();
   const {
     register,
@@ -20,6 +23,7 @@ export function LoginForm() {
     resolver: zodResolver(loginSchema),
   })
 
+  // Zustand global store to save authentication data
   const setAuth = useAuthStore((state) => state.setAuth);
 
 const onSubmit = async (data: LoginFormValues) => {
@@ -31,16 +35,25 @@ const onSubmit = async (data: LoginFormValues) => {
       },
       body: JSON.stringify(data),
     });
-
+    
+    // Handle invalid credentials
     if (!res.ok) {
       throw new Error("Invalid credentials");
     }
 
     const result = await res.json();
+    
+     // Store tokens and user data in global state
+    setAuth({
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
+      email: result.email,
+      role: result.role,
+      permissions: result.permissions,
+    });
 
-    setAuth(result);
-
-    router.push("/documents");
+    // Redirect user after successful login
+    router.push("/dashboard");
 
   } catch (error) {
     console.error(error);
@@ -67,8 +80,7 @@ const onSubmit = async (data: LoginFormValues) => {
 
       <div>
         <Label>Password</Label>
-        <Input
-          type="password"
+        <PasswordInput
           placeholder="Enter your password"
           {...register("password")}
         />

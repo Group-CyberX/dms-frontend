@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Pencil, Trash2, FileText, Clock, Layers, Lock, Tag } from 'lucide-react';
+import { fetchWithAuth } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import CreateWorkflowTemplateDialog from '@/components/ui/workflow/create-workflow-template-dialog';
 
@@ -76,9 +77,9 @@ export default function PoliciesPage() {
     try {
       // Fetch all main data in parallel
       const [templateResponse, workflowResponse, userResponse] = await Promise.all([
-        fetch('http://localhost:8081/api/templates'),
-        fetch('http://localhost:8081/api/workflows'),
-        fetch('http://localhost:8081/api/users'),
+        fetchWithAuth('http://localhost:8081/api/templates'),
+        fetchWithAuth('http://localhost:8081/api/workflows'),
+        fetchWithAuth('http://localhost:8081/api/users'),
       ]);
 
       // Error handling for each response
@@ -110,7 +111,7 @@ export default function PoliciesPage() {
       // Fetch steps for each template
       const stepEntries = await Promise.all(
         templateList.map(async (template: WorkflowTemplate) => {
-          const response = await fetch(`http://localhost:8081/api/templates/${template.id}/steps`);
+          const response = await fetchWithAuth(`http://localhost:8081/api/templates/${template.id}/steps`);
 
           if (!response.ok) {
             return [template.id, [] as WorkflowTemplateStep[]] as const;
@@ -218,7 +219,7 @@ export default function PoliciesPage() {
     }
 
     try {
-      const response = await fetch(`http://localhost:8081/api/templates/${templateId}`, {
+      const response = await fetchWithAuth(`http://localhost:8081/api/templates/${templateId}`, {
         method: 'DELETE',
       });
 

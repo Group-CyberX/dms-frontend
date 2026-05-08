@@ -3,7 +3,7 @@
 import * as React from "react"
 import { cn } from "@/lib/utils"
 
-interface ToggleProps extends Omit<React.InputHTMLAttributes<HTMLInput>, 'type'> {
+interface ToggleProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'type' | 'onToggle'> {
   onToggle?: (checked: boolean) => void
 }
 

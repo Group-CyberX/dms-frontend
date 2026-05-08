@@ -114,7 +114,8 @@ export function UploadDocumentDialog({
           await uploadChunks(file, sessionId, partSize);
 
           // Step 3: Complete
-          const result = await completeUpload(sessionId, documentName, {
+          const result = await completeUpload(sessionId, {
+            title: documentName,
             category: category || undefined,
             tags: tags || undefined,
             description: description || undefined,
