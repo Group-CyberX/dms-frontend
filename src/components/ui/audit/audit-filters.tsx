@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Filter } from "lucide-react";
 import { auditService } from "@/lib/auditService";
+import { getAdminUsers, type User } from "@/lib/api-client";
 import {
     Select,
     SelectContent,
@@ -20,7 +21,7 @@ type AuditFilterProps = {
 };
 
 export default function AuditFilter({ onFilter, onReset }: AuditFilterProps) {
-    const testUserId = "0b0f8543-672e-4a5a-bb8d-99da74f94f90";
+    const [users, setUsers] = useState<User[]>([]);
 
     // Internal state for the filter inputs
     const [filters, setFilters] = useState({
@@ -29,6 +30,29 @@ export default function AuditFilter({ onFilter, onReset }: AuditFilterProps) {
         fromDate: "",
         toDate: ""
     });
+
+    useEffect(() => {
+        let isMounted = true;
+
+        const loadUsers = async () => {
+            try {
+                const data = await getAdminUsers();
+                if (isMounted) {
+                    setUsers(data);
+                }
+            } catch {
+                if (isMounted) {
+                    setUsers([]);
+                }
+            }
+        };
+
+        loadUsers();
+
+        return () => {
+            isMounted = false;
+        };
+    }, []);
 
     const handleFilterChange = (name: string, value: string) => {
         setFilters(prev => ({ ...prev, [name]: value }));
@@ -82,7 +106,11 @@ export default function AuditFilter({ onFilter, onReset }: AuditFilterProps) {
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="all">All users</SelectItem>
-                                <SelectItem value={testUserId}>Kamal Gunarathne (Me)</SelectItem>
+                                {users.map((user) => (
+                                    <SelectItem key={user.userId} value={user.userId}>
+                                        {user.username}
+                                    </SelectItem>
+                                ))}
                             </SelectContent>
                         </Select>
                     </div>

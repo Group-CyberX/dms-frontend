@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from 'react';
-import { Pencil, Trash2, FileText, Clock, Layers, Lock, Tag } from 'lucide-react';
+import { Pencil, Trash2, FileText, Clock, Layers, Lock, Tag, Loader } from 'lucide-react';
 import { fetchWithAuth } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import CreateWorkflowTemplateDialog from '@/components/ui/workflow/create-workflow-template-dialog';
@@ -235,7 +235,14 @@ export default function PoliciesPage() {
   };
 
   if (loading) {
-    return <div className="p-8 text-sm text-gray-600">Loading workflow templates...</div>;
+    return (
+      <div className="p-8">
+        <div className="flex flex-col items-center justify-center py-12">
+          <Loader className="w-8 h-8 text-[#953002] animate-spin mb-4" />
+          <p className="text-gray-600">Loading policies...</p>
+        </div>
+      </div>
+    );
   }
 
   if (error) {

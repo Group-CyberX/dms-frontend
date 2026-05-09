@@ -778,15 +778,30 @@ export interface Role {
 }
 
 /**
- * Get all users (admin only)
+ * Get all users (public listing). Use this for non-admin pages.
  */
 export async function getUsers(): Promise<User[]> {
-  const response = await fetchWithAuth(`${ADMIN_API_BASE_URL}/users`, {
+  const response = await fetchWithAuth(`${API_BASE_URL}/users`, {
     headers: getAuthHeader(),
   });
 
   if (!response.ok) {
     throw new Error(`Failed to fetch users: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Get all users (admin-only). Use when admin privileges are required.
+ */
+export async function getAdminUsers(): Promise<User[]> {
+  const response = await fetchWithAuth(`${ADMIN_API_BASE_URL}/users`, {
+    headers: getAuthHeader(),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch admin users: ${response.statusText}`);
   }
 
   return response.json();

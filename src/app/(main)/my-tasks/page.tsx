@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Loader } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/store/auth-store';
 import ApproveTaskDialog from '@/components/ui/workflow/approve-task-dialog';
@@ -154,7 +155,9 @@ const formatAssigneeLabel = (
 
 export default function MyTasksPage() {
   const token = useAuthStore((state) => state.accessToken);
-  const [authToken, setAuthToken] = useState<string | null>(token);
+  const hasHydrated = useAuthStore((state) => state.hasHydrated);
+  const hasLoadedOnceRef = useRef(false);
+  const inFlightRef = useRef(false);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [approvers, setApprovers] = useState<ApproverOption[]>([]);
   const [workflows, setWorkflows] = useState<WorkflowInstance[]>([]);
@@ -178,22 +181,22 @@ export default function MyTasksPage() {
     return JSON.parse(text);
   };
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
+    if (inFlightRef.current) {
+      return;
+    }
+
+    inFlightRef.current = true;
     setLoading(true);
     setError(null);
 
     try {
-      const headers: Record<string, string> = {};
-
-      // Include auth token if available
-      if (authToken) {
-        headers.Authorization = `Bearer ${authToken}`;
-      }
-
       try {
         // Fetch current user details
         const currentUserResponse = await fetchWithAuth('http://localhost:8081/api/users/me', {
-          headers,
+          headers: {
+            'Content-Type': 'application/json',
+          },
         });
 
         if (currentUserResponse.ok) {
@@ -277,18 +280,24 @@ export default function MyTasksPage() {
       console.error(err);
       setError('Failed to load tasks. Please try again.');
     } finally {
+      inFlightRef.current = false;
       setLoading(false);
     }
-  };
+  }, []);
 
-  // Update auth token from store or localStorage on mount
+  // Load once after auth hydration; avoid reloading on every token refresh cycle.
   useEffect(() => {
-    setAuthToken(token ?? localStorage.getItem('token'));
-  }, [token]);
-  // Load data whenever auth token changes 
-  useEffect(() => {
+    if (!hasHydrated || !token) {
+      return;
+    }
+
+    if (hasLoadedOnceRef.current) {
+      return;
+    }
+
+    hasLoadedOnceRef.current = true;
     loadData();
-  }, [authToken]);
+  }, [hasHydrated, token, loadData]);
 
   const taskRows: TaskRow[] = useMemo(() => {
     return tasks
@@ -421,7 +430,14 @@ export default function MyTasksPage() {
   };
 
   if (loading) {
-    return <div className="p-6">Loading tasks...</div>;
+    return (
+      <div className="p-6">
+        <div className="flex flex-col items-center justify-center py-12">
+          <Loader className="w-8 h-8 text-[#953002] animate-spin mb-4" />
+          <p className="text-gray-600">Loading tasks...</p>
+        </div>
+      </div>
+    );
   }
 
   if (error) {

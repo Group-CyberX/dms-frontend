@@ -2,10 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState, useLayoutEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import Link from "next/link";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import NavigationSideBar from "@/components/NavigationItem/NavigationSideBar";
 import { formatRoleLabel, canAccessPath } from "@/lib/access-control";
 import { useAuthStore, setupCrossWindowLogoutDetection } from "@/store/auth-store";
+import { notificationService } from "@/lib/notificationServices";
 import { Bell, Check, FileText, Search, ChevronDown } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
@@ -124,26 +126,33 @@ export default function MainLayout({
   const roleLabel = useMemo(() => formatRoleLabel(role), [role]);
 
   useEffect(() => {
-    if (!hydrated || !token) return;
+    if (!hydrated || !token) {
+      setNotifications([]);
+      setIsNotificationOpen(false);
+      return;
+    }
+
+    let cancelled = false;
 
     const fetchNotifications = async () => {
       try {
-        const response = await fetch("http://localhost:8081/api/notifications?userId=0b0f8543-672e-4a5a-bb8d-99da74f94f90", {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-
-        const data = await response.json();
-        setNotifications(Array.isArray(data) ? data : []);
+        const data = await notificationService.getAll();
+        if (!cancelled) {
+          setNotifications(Array.isArray(data) ? data : []);
+        }
       } catch {
-        setNotifications([]);
+        if (!cancelled) {
+          setNotifications([]);
+        }
       }
     };
 
     fetchNotifications();
     const interval = setInterval(fetchNotifications, 5000);
-    return () => clearInterval(interval);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
   }, [hydrated, token]);
 
   useEffect(() => {
@@ -164,18 +173,9 @@ export default function MainLayout({
 
     if (!(notification.isRead ?? notification.read)) {
       try {
-        const response = await fetch(
-          `http://localhost:8081/api/notifications/${notification.notificationId}/read`,
-          {
-            method: "PUT",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        );
+        const success = await notificationService.markAsRead(notification.notificationId);
 
-        if (response.ok) {
+        if (success) {
           setNotifications((previous) =>
             previous.map((item) =>
               item.notificationId === notification.notificationId
@@ -192,17 +192,9 @@ export default function MainLayout({
 
   const handleMarkAllRead = async () => {
     try {
-      const response = await fetch(
-        "http://localhost:8081/api/notifications/mark-all-read?userId=0b0f8543-672e-4a5a-bb8d-99da74f94f90",
-        {
-          method: "PUT",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
+      const success = await notificationService.markAllRead();
 
-      if (response.ok) {
+      if (success) {
         setNotifications((previous) => previous.map((item) => ({ ...item, isRead: true, read: true })));
       }
     } catch {
@@ -316,12 +308,14 @@ export default function MainLayout({
                       )}
                     </div>
 
-                    <button
-                      type="button"
-                      className="w-full border-t p-3 text-center text-xs font-medium text-gray-500 hover:bg-slate-50"
-                    >
-                      View all notifications
-                    </button>
+                    <Link href="/notifications" className="block w-full">
+                      <button
+                        type="button"
+                        className="w-full border-t p-3 text-center text-xs font-medium text-gray-500 hover:bg-slate-50"
+                      >
+                        View all notifications
+                      </button>
+                    </Link>
                   </div>
                 )}
               </div>

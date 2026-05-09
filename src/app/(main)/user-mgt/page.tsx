@@ -17,6 +17,7 @@ import {
 	UserCheck,
 	UserMinus,
 	Users,
+	Loader,
 } from "lucide-react";
 
 type UserStatus = "Active" | "Inactive";
@@ -285,9 +286,12 @@ export default function UserManagementPage() {
 						</div>
 
 						{loading && (
-							<div className="border-t border-slate-100 px-5 py-6 text-sm text-slate-500">
-								Loading users...
+						<div className="border-t border-slate-100 px-5 py-12">
+							<div className="flex flex-col items-center justify-center">
+								<Loader className="w-8 h-8 text-[#953002] animate-spin mb-4" />
+								<p className="text-gray-600 text-sm">Loading users...</p>
 							</div>
+						</div>
 						)}
 
 						{error && (

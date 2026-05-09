@@ -1,20 +1,15 @@
+import { fetchWithAuth } from "./api-client";
 import { API_BASE_URL, AUDIT_CONFIG } from "./constants";
 
-const getHeaders = (): Record<string, string> => {
-  const isBrowser = typeof window !== "undefined";
-  const token = isBrowser ? localStorage.getItem("token") : null;
-  
-  return {
-    "Authorization": token ? `Bearer ${token}` : "",
-    "Content-Type": "application/json",
-  };
-};
+const getHeaders = (): Record<string, string> => ({
+  "Content-Type": "application/json",
+});
 
 export const auditService = {
   async getLogs() {
     const url = `${API_BASE_URL}${AUDIT_CONFIG.ENDPOINTS.GET_LOGS}`;
     try {
-      const response = await fetch(url, { 
+      const response = await fetchWithAuth(url, { 
         method: "GET",
         headers: getHeaders() 
       });
@@ -36,7 +31,7 @@ export const auditService = {
     const url = `${baseUrl}/admin/logs/filter?${params.toString()}`;
 
     try {
-      const response = await fetch(url, { 
+      const response = await fetchWithAuth(url, { 
         method: "GET",
         headers: getHeaders()
       });
