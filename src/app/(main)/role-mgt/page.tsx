@@ -10,7 +10,7 @@ import {
   type User,
   updateRolePermissions,
 } from "@/lib/api-client";
-import { Plus, Users, Save } from "lucide-react";
+import { Plus, Users, Save, Loader } from "lucide-react";
 import { CreateRoleDialog } from "../../../components/role-mgt/CreateRoleDialog";
 
 type PermissionGroup = {
@@ -389,7 +389,12 @@ export default function RoleManagementPage() {
                 </Button>
               </div>
 
-              {loading && <p className="text-sm text-slate-500">Loading roles...</p>}
+              {loading && (
+                <div className="flex flex-col items-center justify-center py-8">
+                  <Loader className="w-8 h-8 text-[#953002] animate-spin mb-4" />
+                  <p className="text-gray-600 text-sm">Loading roles...</p>
+                </div>
+              )}
               {saveMessage && <p className="text-sm text-emerald-600">{saveMessage}</p>}
               {error && <p className="text-sm text-red-600">{error}</p>}
             </div>

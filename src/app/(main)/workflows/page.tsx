@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Plus, X, ArrowRight, Calendar, ChevronDown } from 'lucide-react';
+import { Plus, X, ArrowRight, Calendar, ChevronDown, Loader } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
@@ -18,6 +18,7 @@ interface Approver {
 export default function WorkflowBuilderPage() {
   const [documents, setDocuments] = useState<any[]>([]);
   const [templates, setTemplates] = useState<any[]>([]);
+  const [templatesLoading, setTemplatesLoading] = useState<boolean>(false);
   const [folders, setFolders] = useState<any[]>([]);
 
   const [selectedDocument, setSelectedDocument] = useState('');
@@ -112,6 +113,7 @@ export default function WorkflowBuilderPage() {
 
   // Fetch workflow templates
   useEffect(() => {
+    setTemplatesLoading(true);
     fetchWithAuth('http://localhost:8081/api/templates')
       .then(async (res) => {
         if (!res.ok) {
@@ -125,7 +127,8 @@ export default function WorkflowBuilderPage() {
           setTemplates(data);
         }
       })
-      .catch(err => console.error(err));
+      .catch(err => console.error(err))
+      .finally(() => setTemplatesLoading(false));
   }, []);
 
   // Fetch folders for document type selection
@@ -627,7 +630,12 @@ export default function WorkflowBuilderPage() {
             <CardContent>
               <div className="space-y-3 max-h-75 overflow-y-auto pr-2">
 
-                {templates.length > 0 ? (
+                {templatesLoading ? (
+                  <div className="flex flex-col items-center justify-center py-8">
+                    <Loader className="w-8 h-8 text-[#953002] animate-spin mb-4" />
+                    <p className="text-gray-600">Loading templates...</p>
+                  </div>
+                ) : templates.length > 0 ? (
                   templates.map((template: any) => (
                     <div
                       key={template.id}
