@@ -23,7 +23,7 @@ import {
 export default function AdvancedSearch() {
   const router = useRouter()
 
-  const { results, query } = useSearchStore()
+  const { results, query, page, totalPages, totalElements, setPage } = useSearchStore()
   const safeResults: Document[] = Array.isArray(results) ? results : []
   
   // State for Search History
@@ -235,6 +235,35 @@ export default function AdvancedSearch() {
                 </Card>
               )
             })}
+          </div>
+        )}
+
+        {/* Pagination Controls */}
+        {totalPages > 1 && safeResults.length > 0 && (
+          <div className="p-4 mt-6 border border-slate-200 bg-slate-50 flex items-center justify-between rounded-lg">
+            <span className="text-sm text-slate-600">
+              Showing {page * 10 + 1} to {Math.min((page + 1) * 10, totalElements)} of {totalElements} results
+            </span>
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setPage(Math.max(0, page - 1))}
+                disabled={page === 0}
+                className="border-slate-300"
+              >
+                Previous
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setPage(Math.min(totalPages - 1, page + 1))}
+                disabled={page === totalPages - 1}
+                className="border-slate-300"
+              >
+                Next
+              </Button>
+            </div>
           </div>
         )}
       </div>

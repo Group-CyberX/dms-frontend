@@ -8,7 +8,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081/a
 /**
  * Get authorization header with JWT token
  */
-function getAuthHeader() {
+function getAuthHeader(): Record<string, string> {
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
   return token ? { 'Authorization': `Bearer ${token}` } : {};
 }
@@ -111,7 +111,7 @@ export async function uploadMultipleDocuments(
 }
 
 /**
- * Get all documents
+ * Get all active documents (paginated)
  */
 export async function getDocuments() {
   const response = await fetch(`${API_BASE_URL}/documents`, {

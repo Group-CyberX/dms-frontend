@@ -17,7 +17,7 @@ export default function DocumentsPage() {
   const [folders, setFolders] = useState<FolderType[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
+
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (!token) {
@@ -35,7 +35,14 @@ export default function DocumentsPage() {
         getDocuments(),
         getFolders(),
       ]);
-      setDocuments(Array.isArray(docsData) ? docsData : []);
+      
+      // Support paginated response if backend still provides it
+      if (docsData && docsData.content) {
+        setDocuments(docsData.content);
+      } else {
+        setDocuments(Array.isArray(docsData) ? docsData : []);
+      }
+      
       setFolders(Array.isArray(foldersData) ? foldersData : []);
       setError(null);
     } catch (err) {

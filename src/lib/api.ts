@@ -29,20 +29,21 @@ export interface SearchFilters {
   dateRange?: string
 }
 
-export const searchDocuments = async (filters: SearchFilters) => {
+export const searchDocuments = async (filters: SearchFilters, page = 0, size = 10) => {
   // If we only have a general query and no other filters, use the basic `GET /api/search`
   const isOnlyQuery = filters.query && 
     !filters.documentType && !filters.status && !filters.owner && 
     !filters.tags && !filters.signatureStatus && (!filters.dateRange || filters.dateRange === "all" || filters.dateRange === "none");
 
   if (isOnlyQuery) {
-    const response = await API.get("/search", { params: { query: filters.query } });
+    const response = await API.get("/search", { params: { query: filters.query, page, size, paged: true } });
     return response.data;
   }
   
   // Otherwise, use the advanced POST endpoint
   // Send the filters object directly, as it exactly matches AdvancedSearchRequestDTO
-  const response = await API.post("/search/advanced", filters);
+  // Also pass pagination via query parameters
+  const response = await API.post("/search/advanced", filters, { params: { page, size, paged: true } });
   return response.data;
 }
 

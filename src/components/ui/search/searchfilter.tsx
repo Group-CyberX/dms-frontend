@@ -16,15 +16,26 @@ import { useSearchStore } from "@/store/search-store"
 import { searchDocuments } from "@/lib/api"
 
 export function SearchFilters() {
-  const { filters, setFilters, setResults, clearFilters } = useSearchStore()
+  const { filters, page, setFilters, setResults, setPagination, clearFilters } = useSearchStore()
   const [loading, setLoading] = React.useState(false)
+
+  // Automatically execute search when 'page' state changes
+  React.useEffect(() => {
+    handleSearch()
+  }, [page])
 
   // Run search using current filter values
   const handleSearch = async () => {
     try {
       setLoading(true)
-      const data = await searchDocuments(filters)
-      setResults(data)
+      const data = await searchDocuments(filters, page, 10)
+      // Check if it's paginated response
+      if (data && data.content) {
+        setResults(data.content)
+        setPagination(page, data.totalPages, data.totalElements)
+      } else {
+        setResults(Array.isArray(data) ? data : [])
+      }
     } catch (error) {
       console.error("Search error:", error)
     } finally {
