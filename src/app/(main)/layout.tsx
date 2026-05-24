@@ -216,42 +216,58 @@ export default function MainLayout({
         <NavigationSideBar />
         
         <div className="flex flex-col flex-1 overflow-hidden">
-          <header className="grid h-16 grid-cols-[1fr_auto_1fr] items-center border-b border-slate-200 bg-white px-4 lg:px-8">
+          
+          {/* Refactored Header Component */}
+          <header className="flex h-16 w-full items-center justify-between border-b border-slate-200 bg-white px-6">
+            {/* Left Side: Sidebar Trigger */}
             <div className="flex items-center gap-2">
               <SidebarTrigger className="text-slate-700 hover:bg-slate-100" />
             </div>
 
-            <div className="relative hidden w-[min(560px,calc(100vw-420px))] md:block">
-              <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Search documents, tasks, workflows..."
-                className="h-10 w-full rounded-md border-0 bg-slate-100 pl-11 pr-4 text-sm text-slate-700 shadow-sm outline-none placeholder:text-slate-400 focus:ring-1 focus:ring-[#953002]"
-              />
+            {/* Center: Search Bar Container */}
+            <div className="hidden md:flex items-center flex-1 max-w-md mx-4">
+              <div className="relative w-full">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search documents, tasks, workflows..."
+                  className="h-10 w-full rounded-md bg-slate-100 pl-10 pr-4 text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:ring-1 focus:ring-[#953002] border-0"
+                />
+              </div>
             </div>
 
-            <div className="flex items-center justify-end gap-4">
+            {/* Right Side: Actions & Profile */}
+            <div className="flex items-center gap-6">
+              {/* Notification Bell Section */}
               <div className="relative" ref={notificationRef}>
                 <button
-                  type="button"
-                  onClick={() => setIsNotificationOpen((previous) => !previous)}
-                  className="relative flex h-10 w-10 items-center justify-center rounded-full text-slate-600 transition hover:bg-slate-100"
-                  aria-label="Notifications"
-                >
-                  <Bell className="h-5 w-5" />
-                  {unreadCount > 0 && (
-                    <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#d62440] px-1 text-[10px] font-bold text-white">
-                      {unreadCount}
-                    </span>
-                  )}
+                    type="button"
+                    onClick={() => setIsNotificationOpen((previous) => !previous)}
+                    className="relative p-2 rounded-full text-slate-600 transition hover:bg-slate-100 flex items-center justify-center"
+                    aria-label="Notifications"
+                  >
+                    <Bell className="h-5 w-5" />
+                    {unreadCount > 0 && (
+                      <span className="absolute top-1 right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-700 bg-opacity-0 px-1 text-[10px] font-bold text-white border-2 border-white translate-x-1/2 -translate-y-1/2 z-10">
+                        {unreadCount}
+                      </span>
+                    )}{unreadCount > 0 && (
+                        <span 
+                          style={{ backgroundColor: '#dc2626', opacity: 1 }}
+                          className="absolute top-1 right-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold text-white border-2 border-white translate-x-1/2 -translate-y-1/2 z-20"
+                        >
+                          {unreadCount}
+                      </span>
+                      )}
                 </button>
 
+                {/* Dropdown Menu */}
                 {isNotificationOpen && (
                   <div className="absolute right-0 mt-3 w-80 overflow-hidden rounded-lg border bg-white shadow-xl z-50">
                     <div className="flex items-center justify-between border-b p-4">
                       <div>
                         <h3 className="text-sm font-bold text-gray-800">Notifications</h3>
-                        <p className="text-sm text-gray-600">
+                        <p className="text-[11px] text-gray-500">
                           You have {unreadCount} unread notifications
                         </p>
                       </div>
@@ -275,7 +291,7 @@ export default function MainLayout({
                             <div
                               key={notification.notificationId}
                               onClick={() => handleNotificationClick(notification)}
-                              className={`relative flex gap-3 border-b p-4 transition-colors hover:bg-slate-100 ${
+                              className={`relative flex gap-3 border-b p-4 transition-colors hover:bg-slate-100 cursor-pointer ${
                                 !isRead ? "bg-[#953002]/5" : "bg-white"
                               }`}
                             >
@@ -320,6 +336,7 @@ export default function MainLayout({
                 )}
               </div>
 
+              {/* User Profile Info */}
               <div className="flex items-center gap-3 border-l border-slate-200 pl-4">
                 <div className="hidden text-right leading-tight sm:block">
                   <p className="text-sm font-semibold text-slate-800">{displayName}</p>
@@ -328,11 +345,11 @@ export default function MainLayout({
                   </p>
                 </div>
 
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#953002] text-sm font-bold text-white shadow-sm">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#953002] text-sm font-bold text-white shadow-sm shrink-0">
                   {initials || "U"}
                 </div>
 
-                <ChevronDown className="h-4 w-4 text-slate-400" />
+                <ChevronDown className="h-4 w-4 text-slate-400 hidden sm:block" />
               </div>
             </div>
           </header>
