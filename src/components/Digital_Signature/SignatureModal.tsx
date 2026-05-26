@@ -1,9 +1,10 @@
+"use client"
+
 import React, { useState, useRef } from 'react';
 import SignatureCanvas from 'react-signature-canvas';
 import Cropper from 'react-easy-crop';
 import { Great_Vibes, Playfair_Display, Inter } from 'next/font/google';
 
-// Initialize the fonts at the module level
 const cursiveFont = Great_Vibes({ weight: '400', subsets: ['latin'] });
 const serifFont = Playfair_Display({ weight: '600', subsets: ['latin'] });
 const sansFont = Inter({ weight: '500', subsets: ['latin'] });
@@ -17,14 +18,10 @@ interface SignatureModalProps {
 export const SignatureModal: React.FC<SignatureModalProps> = ({ isOpen, onClose, onSave }) => {
   const [activeTab, setActiveTab] = useState<'draw' | 'type' | 'upload'>('draw');
   
-  // State for "Draw" tab
   const sigCanvasRef = useRef<SignatureCanvas>(null);
-
-  // State for "Type" tab
   const [typedName, setTypedName] = useState('John Doe');
   const [selectedFont, setSelectedFont] = useState<'cursive' | 'serif' | 'sans'>('cursive');
 
-  // State for "Upload" tab
   const [imageSrc, setImageSrc] = useState<string | null>(null);
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
@@ -32,15 +29,87 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({ isOpen, onClose,
 
   if (!isOpen) return null;
 
+  // Converts Typed Name text to a clean image using HTML Canvas
+  const generateTypedSignatureImage = (): string => {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    // Set size matching typical bounding aspects
+    canvas.width = 450;
+    canvas.height = 180;
+    
+    if (ctx) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      // Match the native font definitions
+      let fontStyle = '32px sans-serif';
+      if (selectedFont === 'cursive') fontStyle = '44px "Great Vibes", cursive';
+      else if (selectedFont === 'serif') fontStyle = 'bold 36px "Playfair Display", serif';
+      else if (selectedFont === 'sans') fontStyle = '500 30px "Inter", sans-serif';
+      
+      ctx.font = fontStyle;
+      ctx.fillStyle = '#1e293b'; // slate-800
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      
+      // Paint text to the center of the viewport
+      ctx.fillText(typedName || 'Preview', canvas.width / 2, canvas.height / 2);
+    }
+    
+    return canvas.toDataURL('image/png');
+  };
+
+  const getCroppedImgUrl = (imageSrcStr: string, pixelCrop: any): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const image = new Image();
+      image.src = imageSrcStr;
+      image.onload = () => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+
+        if (!ctx) {
+          reject(new Error("No 2d context"));
+          return;
+        }
+
+        canvas.width = pixelCrop.width;
+        canvas.height = pixelCrop.height;
+
+        ctx.drawImage(
+          image,
+          pixelCrop.x,
+          pixelCrop.y,
+          pixelCrop.width,
+          pixelCrop.height,
+          0,
+          0,
+          pixelCrop.width,
+          pixelCrop.height
+        );
+
+        resolve(canvas.toDataURL('image/png'));
+      };
+      image.onerror = (err) => reject(err);
+    });
+  };
+
   const handleSave = async () => {
     if (activeTab === 'draw' && sigCanvasRef.current) {
       if (!sigCanvasRef.current.isEmpty()) {
         onSave(sigCanvasRef.current.getTrimmedCanvas().toDataURL('image/png'));
       }
     } else if (activeTab === 'type') {
-      onSave(`TEXT:${typedName}:${selectedFont}`);
-    } else if (activeTab === 'upload' && imageSrc) {
-      onSave(imageSrc); 
+      // Turn typed text directly into a responsive, draggable image snapshot!
+      const generatedImg = generateTypedSignatureImage();
+      onSave(generatedImg);
+    } else if (activeTab === 'upload' && imageSrc && croppedAreaPixels) {
+      try {
+        const croppedDataUrl = await getCroppedImgUrl(imageSrc, croppedAreaPixels);
+        onSave(croppedDataUrl);
+      } catch (error) {
+        console.error("Error cropping signature image:", error);
+        onSave(imageSrc); 
+      }
     }
     onClose();
   };
@@ -60,7 +129,6 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({ isOpen, onClose,
     >
       <div className="relative w-full max-w-2xl rounded-xl bg-white p-6 shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-200">
         
-        {/* Header and Close Cross */}
         <div className="flex items-center justify-between border-b border-slate-100 pb-3">
           <h3 className="text-lg font-bold text-slate-900 tracking-tight">Create Signature</h3>
           <button 
@@ -75,7 +143,6 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({ isOpen, onClose,
           Draw, type, or upload a signature. It will be saved to your account and reusable on future documents.
         </p>
 
-        {/* Tab Switcher */}
         <div className="my-4 flex rounded-lg bg-slate-100 p-1">
           {(['draw', 'type', 'upload'] as const).map((tab) => (
             <button
@@ -90,10 +157,8 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({ isOpen, onClose,
           ))}
         </div>
 
-        {/* Active Content Area Container with Fixed Height Layout Rules */}
         <div className="w-full h-64 rounded-xl border border-slate-200 bg-slate-50/50 relative overflow-hidden flex flex-col">
           
-          {/* DRAW TAB */}
           {activeTab === 'draw' && (
             <div className="w-full h-full bg-transparent relative">
               <SignatureCanvas
@@ -107,7 +172,6 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({ isOpen, onClose,
             </div>
           )}
 
-          {/* TYPE TAB */}
           {activeTab === 'type' && (
             <div className="w-full h-full p-6 space-y-4 flex flex-col justify-center">
               <div className="flex flex-col">
@@ -149,7 +213,6 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({ isOpen, onClose,
             </div>
           )}
 
-          {/* UPLOAD TAB */}
           {activeTab === 'upload' && (
             <div className="w-full h-full flex flex-col relative">
               {!imageSrc ? (
@@ -161,8 +224,6 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({ isOpen, onClose,
                 </label>
               ) : (
                 <div className="w-full h-full flex flex-col relative bg-slate-900">
-                  
-                  {/* FORCED FIXED ACCURATE CORNER HEIGHT CANVAS (Bypasses all flexible layout traps) */}
                   <div 
                     style={{ height: '190px', position: 'relative' }} 
                     className="w-full bg-slate-900 overflow-hidden shrink-0"
@@ -178,7 +239,6 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({ isOpen, onClose,
                     />
                   </div>
 
-                  {/* BOTTOM ZOOM CONTROL SLIDER GRID PANEL TRACK */}
                   <div className="h-12 w-full bg-white border-t border-slate-100 px-4 flex items-center gap-3 z-30 shrink-0">
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Zoom</span>
                     <input
@@ -199,17 +259,13 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({ isOpen, onClose,
                       Remove
                     </button>
                   </div>
-
                 </div>
               )}
             </div>
           )}
         </div>
 
-        {/* Footer Actions Row */}
         <div className="mt-6 flex items-center justify-between border-t border-slate-100 pt-4">
-          
-          {/* LEFT BOTTOM CORNER: CLEAR BUTTON */}
           <div>
             {activeTab === 'draw' ? (
               <button 
@@ -224,7 +280,6 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({ isOpen, onClose,
             )}
           </div>
 
-          {/* RIGHT BOTTOM CORNER: CANCEL & SAVE ACTIONS */}
           <div className="flex gap-3">
             <button 
               type="button"
@@ -241,7 +296,6 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({ isOpen, onClose,
               Save Signature
             </button>
           </div>
-
         </div>
 
       </div>

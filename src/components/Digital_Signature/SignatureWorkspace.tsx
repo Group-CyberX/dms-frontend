@@ -1,11 +1,8 @@
+"use client"
+
 import React, { useState } from 'react';
 import { Rnd } from 'react-rnd';
 import { SignatureModal } from './SignatureModal';
-import { Great_Vibes, Playfair_Display, Inter } from 'next/font/google';
-
-const cursiveFont = Great_Vibes({ weight: '400', subsets: ['latin'] });
-const serifFont = Playfair_Display({ weight: '600', subsets: ['latin'] });
-const sansFont = Inter({ weight: '500', subsets: ['latin'] });
 
 interface Placement {
   id: string;
@@ -22,8 +19,8 @@ export const SignatureWorkspace: React.FC = () => {
   const [placements, setPlacements] = useState<Placement[]>([]);
 
   const handleAddToPage = () => {
-    console.log("Add to Page 1 button was clicked!");
-    const activeSignature = savedSignature || "TEXT:John Doe:cursive";
+    // Falls back to a clean default state if user clicks add without opening modal
+    const activeSignature = savedSignature || "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='150' height='60'><text x='50%%' y='50%%' dom-weight='bold' font-family='sans-serif' font-size='16' fill='%2364748b' text-anchor='middle' alignment-baseline='middle'>John Doe</text></svg>";
 
     const newPlacement: Placement = {
       id: `sig-${Date.now()}`,
@@ -41,17 +38,10 @@ export const SignatureWorkspace: React.FC = () => {
     setPlacements(placements.filter(p => p.id !== id));
   };
 
-  // Helper utility function to fetch loaded font config class tags dynamically
-  const getFontClass = (styleTag: string) => {
-    if (styleTag === 'serif') return serifFont.className;
-    if (styleTag === 'sans') return sansFont.className;
-    return cursiveFont.className;
-  };
-
   return (
     <div className="flex h-screen w-full flex-col bg-[#F3F4F6] font-sans antialiased text-gray-800 overflow-hidden">
       
-      {/* 1. TOP GLOBAL ACTION HEADER BAR */}
+      {/* TOP HEADER BAR */}
       <div 
         style={{ height: '65px' }} 
         className="w-full shrink-0 flex items-center justify-between border-b border-slate-200 bg-white px-8 shadow-sm z-20"
@@ -82,10 +72,10 @@ export const SignatureWorkspace: React.FC = () => {
         </div>
       </div>
 
-      {/* MAIN CONTENT SPLIT: UTILITY SIDEBAR ON LEFT + CANVAS WORKSPACE */}
+      {/* MAIN SPLIT CONTENT */}
       <div className="flex flex-1 overflow-hidden">
         
-        {/* 2. SIGNATURE UTILITY SIDEBAR */}
+        {/* SIDEBAR */}
         <div 
           style={{ width: '300px' }} 
           className="border-r bg-white p-3 flex h-full flex-col justify-between shrink-0 overflow-y-auto overflow-x-hidden"
@@ -105,13 +95,7 @@ export const SignatureWorkspace: React.FC = () => {
                 </p>
               ) : (
                 <div className="group relative rounded-lg border border-slate-100 bg-[#FAF9F6] p-4 flex items-center justify-center min-h-[90px] shadow-inner animate-in fade-in zoom-in-95 duration-200">
-                  {savedSignature.startsWith('TEXT:') ? (
-                    <span className={`text-2xl text-slate-800 ${getFontClass(savedSignature.split(':')[2])}`}>
-                      {savedSignature.split(':')[1]}
-                    </span>
-                  ) : (
-                    <img src={savedSignature} alt="Saved Signature" className="max-h-14 object-contain" />
-                  )}
+                  <img src={savedSignature} alt="Saved Signature" className="max-h-14 object-contain animate-in fade-in" />
                 </div>
               )}
 
@@ -157,7 +141,7 @@ export const SignatureWorkspace: React.FC = () => {
           </div>
         </div>
 
-        {/* 3. CENTER WORKSPACE CANVAS AREA FOR A4 DOCUMENT */}
+        {/* WORKSPACE CANVAS */}
         <div className="flex-1 overflow-y-auto p-12 flex flex-col items-center bg-[#F3F4F6] select-none">
           
           <div className="flex items-center gap-3 mb-6 bg-white px-3.5 py-1.5 rounded-lg shadow-sm border border-slate-200 text-xs text-slate-500 shrink-0">
@@ -195,7 +179,7 @@ export const SignatureWorkspace: React.FC = () => {
               </div>
             </div>
 
-            {/* DYNAMIC PLACEMENTS RENDER LAYER */}
+            {/* DYNAMIC PLACEMENTS LAYER */}
             {placements.map((placement) => (
               <Rnd
                 key={placement.id}
@@ -224,17 +208,11 @@ export const SignatureWorkspace: React.FC = () => {
                 className="border border-dashed border-amber-600 bg-amber-50/20 group rounded flex items-center justify-center shadow-sm backdrop-blur-[0.5px]"
               >
                 <div className="relative w-full h-full flex items-center justify-center p-2 select-none pointer-events-none">
-                  {placement.signatureUrl.startsWith('TEXT:') ? (
-                    <span className={`text-center break-all text-slate-800 text-xl ${getFontClass(placement.signatureUrl.split(':')[2])}`}>
-                      {placement.signatureUrl.split(':')[1]}
-                    </span>
-                  ) : (
-                    <img 
-                      src={placement.signatureUrl} 
-                      alt="Signature" 
-                      className="w-full h-full object-contain" 
-                    />
-                  )}
+                  <img 
+                    src={placement.signatureUrl} 
+                    alt="Signature" 
+                    className="w-full h-full object-contain" 
+                  />
                 </div>
 
                 <button
