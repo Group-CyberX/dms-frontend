@@ -12,7 +12,8 @@ const sansFont = Inter({ weight: '500', subsets: ['latin'] });
 interface SignatureModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (signatureDataUrl: string) => void;
+  // Change this to pass both dataUrl and the tab type
+  onSave: (data: { dataUrl: string; type: 'DRAW' | 'TYPE' | 'UPLOAD' }) => void;
 }
 
 export const SignatureModal: React.FC<SignatureModalProps> = ({ isOpen, onClose, onSave }) => {
@@ -29,33 +30,25 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({ isOpen, onClose,
 
   if (!isOpen) return null;
 
-  // Converts Typed Name text to a clean image using HTML Canvas
   const generateTypedSignatureImage = (): string => {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
-    
-    // Set size matching typical bounding aspects
     canvas.width = 450;
     canvas.height = 180;
     
     if (ctx) {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      
-      // Match the native font definitions
       let fontStyle = '32px sans-serif';
       if (selectedFont === 'cursive') fontStyle = '44px "Great Vibes", cursive';
       else if (selectedFont === 'serif') fontStyle = 'bold 36px "Playfair Display", serif';
       else if (selectedFont === 'sans') fontStyle = '500 30px "Inter", sans-serif';
       
       ctx.font = fontStyle;
-      ctx.fillStyle = '#1e293b'; // slate-800
+      ctx.fillStyle = '#1e293b';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      
-      // Paint text to the center of the viewport
       ctx.fillText(typedName || 'Preview', canvas.width / 2, canvas.height / 2);
     }
-    
     return canvas.toDataURL('image/png');
   };
 
@@ -66,27 +59,10 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({ isOpen, onClose,
       image.onload = () => {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
-
-        if (!ctx) {
-          reject(new Error("No 2d context"));
-          return;
-        }
-
+        if (!ctx) { reject(new Error("No 2d context")); return; }
         canvas.width = pixelCrop.width;
         canvas.height = pixelCrop.height;
-
-        ctx.drawImage(
-          image,
-          pixelCrop.x,
-          pixelCrop.y,
-          pixelCrop.width,
-          pixelCrop.height,
-          0,
-          0,
-          pixelCrop.width,
-          pixelCrop.height
-        );
-
+        ctx.drawImage(image, pixelCrop.x, pixelCrop.y, pixelCrop.width, pixelCrop.height, 0, 0, pixelCrop.width, pixelCrop.height);
         resolve(canvas.toDataURL('image/png'));
       };
       image.onerror = (err) => reject(err);
@@ -96,19 +72,26 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({ isOpen, onClose,
   const handleSave = async () => {
     if (activeTab === 'draw' && sigCanvasRef.current) {
       if (!sigCanvasRef.current.isEmpty()) {
-        onSave(sigCanvasRef.current.getTrimmedCanvas().toDataURL('image/png'));
+        onSave({
+          dataUrl: sigCanvasRef.current.getTrimmedCanvas().toDataURL('image/png'),
+          type: 'DRAW'
+        });
       }
     } else if (activeTab === 'type') {
-      // Turn typed text directly into a responsive, draggable image snapshot!
-      const generatedImg = generateTypedSignatureImage();
-      onSave(generatedImg);
+      onSave({
+        dataUrl: generateTypedSignatureImage(),
+        type: 'TYPE'
+      });
     } else if (activeTab === 'upload' && imageSrc && croppedAreaPixels) {
       try {
         const croppedDataUrl = await getCroppedImgUrl(imageSrc, croppedAreaPixels);
-        onSave(croppedDataUrl);
+        onSave({
+          dataUrl: croppedDataUrl,
+          type: 'UPLOAD'
+        });
       } catch (error) {
         console.error("Error cropping signature image:", error);
-        onSave(imageSrc); 
+        onSave({ dataUrl: imageSrc, type: 'UPLOAD' }); 
       }
     }
     onClose();
@@ -131,12 +114,7 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({ isOpen, onClose,
         
         <div className="flex items-center justify-between border-b border-slate-100 pb-3">
           <h3 className="text-lg font-bold text-slate-900 tracking-tight">Create Signature</h3>
-          <button 
-            onClick={onClose} 
-            className="text-slate-400 hover:text-slate-600 text-sm font-semibold p-1 transition-colors"
-          >
-            ✕
-          </button>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-sm font-semibold p-1 transition-colors">✕</button>
         </div>
 
         <p className="my-3 text-xs font-medium text-slate-400 leading-relaxed">
@@ -158,17 +136,9 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({ isOpen, onClose,
         </div>
 
         <div className="w-full h-64 rounded-xl border border-slate-200 bg-slate-50/50 relative overflow-hidden flex flex-col">
-          
           {activeTab === 'draw' && (
             <div className="w-full h-full bg-transparent relative">
-              <SignatureCanvas
-                ref={sigCanvasRef}
-                canvasProps={{ 
-                  className: 'w-full h-full cursor-crosshair' 
-                }}
-                dotSize={1.5}
-                penColor="#000000"
-              />
+              <SignatureCanvas ref={sigCanvasRef} canvasProps={{ className: 'w-full h-full cursor-crosshair' }} dotSize={1.5} penColor="#000000" />
             </div>
           )}
 
@@ -198,15 +168,7 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({ isOpen, onClose,
                 ))}
               </div>
               <div className="mt-1 text-center p-3 border border-slate-100 rounded-xl bg-white min-h-[70px] flex items-center justify-center shadow-inner">
-                <span 
-                  className={`text-slate-800 text-3xl select-none tracking-normal ${
-                    selectedFont === 'cursive' 
-                      ? cursiveFont.className 
-                      : selectedFont === 'serif' 
-                      ? serifFont.className 
-                      : sansFont.className
-                  }`}
-                >
+                <span className={`text-slate-800 text-3xl select-none tracking-normal ${selectedFont === 'cursive' ? cursiveFont.className : selectedFont === 'serif' ? serifFont.className : sansFont.className}`}>
                   {typedName || 'Preview'}
                 </span>
               </div>
@@ -224,40 +186,13 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({ isOpen, onClose,
                 </label>
               ) : (
                 <div className="w-full h-full flex flex-col relative bg-slate-900">
-                  <div 
-                    style={{ height: '190px', position: 'relative' }} 
-                    className="w-full bg-slate-900 overflow-hidden shrink-0"
-                  >
-                    <Cropper
-                      image={imageSrc}
-                      crop={crop}
-                      zoom={zoom}
-                      aspect={3 / 1} 
-                      onCropChange={setCrop}
-                      onZoomChange={setZoom}
-                      onCropComplete={(_, pixels) => setCroppedAreaPixels(pixels)}
-                    />
+                  <div style={{ height: '190px', position: 'relative' }} className="w-full bg-slate-900 overflow-hidden shrink-0">
+                    <Cropper image={imageSrc} crop={crop} zoom={zoom} aspect={3 / 1} onCropChange={setCrop} onZoomChange={setZoom} onCropComplete={(_, pixels) => setCroppedAreaPixels(pixels)} />
                   </div>
-
                   <div className="h-12 w-full bg-white border-t border-slate-100 px-4 flex items-center gap-3 z-30 shrink-0">
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Zoom</span>
-                    <input
-                      type="range"
-                      value={zoom}
-                      min={1}
-                      max={3}
-                      step={0.1}
-                      aria-label="Zoom"
-                      onChange={(e) => setZoom(Number(e.target.value))}
-                      className="flex-1 h-1 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-[#8B2E00]"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setImageSrc(null)}
-                      className="text-[10px] font-bold text-red-500 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50 transition"
-                    >
-                      Remove
-                    </button>
+                    <input type="range" value={zoom} min={1} max={3} step={0.1} aria-label="Zoom" onChange={(e) => setZoom(Number(e.target.value))} className="flex-1 h-1 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-[#8B2E00]" />
+                    <button type="button" onClick={() => setImageSrc(null)} className="text-[10px] font-bold text-red-500 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50 transition">Remove</button>
                   </div>
                 </div>
               )}
@@ -267,34 +202,13 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({ isOpen, onClose,
 
         <div className="mt-6 flex items-center justify-between border-t border-slate-100 pt-4">
           <div>
-            {activeTab === 'draw' ? (
-              <button 
-                type="button"
-                onClick={() => sigCanvasRef.current?.clear()} 
-                className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 shadow-sm transition"
-              >
-                Clear
-              </button>
-            ) : (
-              <div />
+            {activeTab === 'draw' && (
+              <button type="button" onClick={() => sigCanvasRef.current?.clear()} className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 shadow-sm transition">Clear</button>
             )}
           </div>
-
           <div className="flex gap-3">
-            <button 
-              type="button"
-              onClick={onClose} 
-              className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 transition shadow-sm bg-white"
-            >
-              Cancel
-            </button>
-            <button 
-              type="button"
-              onClick={handleSave} 
-              className="rounded-lg bg-[#8B2E00] hover:bg-[#722600] px-4 py-2 text-xs font-bold text-white shadow-md transition-all tracking-wide"
-            >
-              Save Signature
-            </button>
+            <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 transition shadow-sm bg-white">Cancel</button>
+            <button type="button" onClick={handleSave} className="rounded-lg bg-[#8B2E00] hover:bg-[#722600] px-4 py-2 text-xs font-bold text-white shadow-md transition-all tracking-wide">Save Signature</button>
           </div>
         </div>
 

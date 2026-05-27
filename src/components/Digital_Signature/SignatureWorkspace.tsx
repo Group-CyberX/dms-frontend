@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState,useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Rnd } from 'react-rnd';
 import { SignatureModal } from './SignatureModal';
 import { signatureService } from "@/lib/signatureService";
@@ -19,17 +19,14 @@ export const SignatureWorkspace: React.FC = () => {
   const [savedSignature, setSavedSignature] = useState<string | null>(null);
   const [placements, setPlacements] = useState<Placement[]>([]);
 
-  // Replace your hardcoded current mock user string with your active Auth context userId
-const mockUserId = "86ee0da4-69ff-4ea5-91ed-c7cfe411f0d9"; 
+  const mockUserId = "86ee0da4-69ff-4ea5-91ed-c7cfe411f0d9"; 
 
   useEffect(() => {
     const loadSavedSignatures = async () => {
       try {
         const saved = await signatureService.getUserSignatures(mockUserId);
         if (saved && saved.length > 0) {
-          // Find default or use the first available record
           const defaultSig = saved.find((s: any) => s.isDefault) || saved[0];
-          // Pass the signature image bytea back into a usable dataUrl
           setSavedSignature(`data:image/png;base64,${defaultSig.signatureImage}`);
         }
       } catch (err) {
@@ -40,8 +37,7 @@ const mockUserId = "86ee0da4-69ff-4ea5-91ed-c7cfe411f0d9";
   }, [mockUserId]);
 
   const handleAddToPage = () => {
-    // Falls back to a clean default state if user clicks add without opening modal
-    const activeSignature = savedSignature || "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='150' height='60'><text x='50%%' y='50%%' dom-weight='bold' font-family='sans-serif' font-size='16' fill='%2364748b' text-anchor='middle' alignment-baseline='middle'>John Doe</text></svg>";
+    const activeSignature = savedSignature || "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='150' height='60'><text x='50%' y='50%' font-weight='bold' font-family='sans-serif' font-size='16' fill='%2364748b' text-anchor='middle' alignment-baseline='middle'>John Doe</text></svg>";
 
     const newPlacement: Placement = {
       id: `sig-${Date.now()}`,
@@ -59,19 +55,13 @@ const mockUserId = "86ee0da4-69ff-4ea5-91ed-c7cfe411f0d9";
     setPlacements(placements.filter(p => p.id !== id));
   };
 
-
   return (
     <div className="flex h-screen w-full flex-col bg-[#F3F4F6] font-sans antialiased text-gray-800 overflow-hidden">
       
       {/* TOP HEADER BAR */}
-      <div 
-        style={{ height: '65px' }} 
-        className="w-full shrink-0 flex items-center justify-between border-b border-slate-200 bg-white px-8 shadow-sm z-20"
-      >
+      <div style={{ height: '65px' }} className="w-full shrink-0 flex items-center justify-between border-b border-slate-200 bg-white px-8 shadow-sm z-20">
         <div className="flex items-center gap-5">
-          <button className="text-gray-400 hover:text-gray-700 transition-colors text-xl font-medium p-1 hover:bg-slate-50 rounded-lg">
-            ←
-          </button>
+          <button className="text-gray-400 hover:text-gray-700 transition-colors text-xl font-medium p-1 hover:bg-slate-50 rounded-lg">←</button>
           <div className="flex items-center gap-3.5">
             <span className="text-[#8B2E00] text-3xl">📄</span>
             <div>
@@ -82,15 +72,9 @@ const mockUserId = "86ee0da4-69ff-4ea5-91ed-c7cfe411f0d9";
         </div>
         
         <div className="flex items-center gap-4">
-          <span className="rounded-full bg-slate-100 px-8 py-2 text-xs font-bold text-slate-600 tracking-wide">
-            {placements.length} placements
-          </span>
-          <button className="rounded-lg border border-slate-200 px-8 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 bg-white transition shadow-sm">
-            Cancel
-          </button>
-          <button className="rounded-lg bg-[#8B2E00] px-6 py-2 text-xs font-extrabold text-white hover:bg-[#722600] shadow-md transition-all tracking-wide">
-            Save & Approve
-          </button>
+          <span className="rounded-full bg-slate-100 px-8 py-2 text-xs font-bold text-slate-600 tracking-wide">{placements.length} placements</span>
+          <button className="rounded-lg border border-slate-200 px-8 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 bg-white transition shadow-sm">Cancel</button>
+          <button className="rounded-lg bg-[#8B2E00] px-6 py-2 text-xs font-extrabold text-white hover:bg-[#722600] shadow-md transition-all tracking-wide">Save & Approve</button>
         </div>
       </div>
 
@@ -98,23 +82,16 @@ const mockUserId = "86ee0da4-69ff-4ea5-91ed-c7cfe411f0d9";
       <div className="flex flex-1 overflow-hidden">
         
         {/* SIDEBAR */}
-        <div 
-          style={{ width: '300px' }} 
-          className="border-r bg-white p-3 flex h-full flex-col justify-between shrink-0 overflow-y-auto overflow-x-hidden"
-        >  
+        <div style={{ width: '300px' }} className="border-r bg-white p-3 flex h-full flex-col justify-between shrink-0 overflow-y-auto overflow-x-hidden">  
           <div className="space-y-4">
             <div className="px-2 py-2 flex items-center gap-2">
-              <div className="h-10 w-10 rounded bg-[#8B2E00] text-white flex items-center justify-center text-sm font-bold shrink-0">
-                ✍️
-              </div>
+              <div className="h-10 w-10 rounded bg-[#8B2E00] text-white flex items-center justify-center text-sm font-bold shrink-0">✍️</div>
               <div className="font-semibold text-sm text-[#8B2E00]">Your Signatures</div>
             </div>
             
             <div className="px-2 space-y-4">
               {!savedSignature ? (
-                <p className="text-sm text-slate-400 mb-3 leading-relaxed">
-                  No signatures yet. Create one to start placing.
-                </p>
+                <p className="text-sm text-slate-400 mb-3 leading-relaxed">No signatures yet. Create one to start placing.</p>
               ) : (
                 <div className="group relative rounded-lg border border-slate-100 bg-[#FAF9F6] p-4 flex items-center justify-center min-h-[90px] shadow-inner animate-in fade-in zoom-in-95 duration-200">
                   <img src={savedSignature} alt="Saved Signature" className="max-h-14 object-contain animate-in fade-in" />
@@ -131,12 +108,7 @@ const mockUserId = "86ee0da4-69ff-4ea5-91ed-c7cfe411f0d9";
                 </button>
               </div>
 
-              <button 
-                onClick={handleAddToPage}
-                className="w-full rounded-lg bg-[#8B2E00] hover:bg-[#722600] text-white py-2.5 text-xs font-bold shadow-md transition-all tracking-wide"
-              >
-                📄 Add to Page 1
-              </button>
+              <button onClick={handleAddToPage} className="w-full rounded-lg bg-[#8B2E00] hover:bg-[#722600] text-white py-2.5 text-xs font-bold shadow-md transition-all tracking-wide">📄 Add to Page 1</button>
 
               {placements.length > 0 && (
                 <div className="border-t border-slate-100 pt-4 mt-2">
@@ -145,9 +117,7 @@ const mockUserId = "86ee0da4-69ff-4ea5-91ed-c7cfe411f0d9";
                     {placements.map((p) => (
                       <div key={p.id} className="flex items-center justify-between text-[11px] p-2 bg-slate-50 rounded border border-slate-100">
                         <span className="text-slate-500 font-medium">Page 1 ({Math.round(p.x)}, {Math.round(p.y)})</span>
-                        <button onClick={() => removePlacement(p.id)} className="text-slate-400 hover:text-red-500 font-medium transition">
-                          ✕
-                        </button>
+                        <button onClick={() => removePlacement(p.id)} className="text-slate-400 hover:text-red-500 font-medium transition">✕</button>
                       </div>
                     ))}
                   </div>
@@ -157,15 +127,12 @@ const mockUserId = "86ee0da4-69ff-4ea5-91ed-c7cfe411f0d9";
           </div>
 
           <div className="px-2 border-t border-slate-100 pt-3 mb-2">
-            <p className="text-[11px] text-slate-400 leading-relaxed">
-              Drag the signature box to position it. Drag the corner to resize. You can place the same signature multiple times.
-            </p>
+            <p className="text-[11px] text-slate-400 leading-relaxed">Drag the signature box to position it. Drag the corner to resize. You can place the same signature multiple times.</p>
           </div>
         </div>
 
         {/* WORKSPACE CANVAS */}
         <div className="flex-1 overflow-y-auto p-12 flex flex-col items-center bg-[#F3F4F6] select-none">
-          
           <div className="flex items-center gap-3 mb-6 bg-white px-3.5 py-1.5 rounded-lg shadow-sm border border-slate-200 text-xs text-slate-500 shrink-0">
             <button className="hover:text-black p-0.5 rounded hover:bg-slate-50 transition-colors">‹</button>
             <span className="font-semibold text-slate-700">Page 1 of 3</span>
@@ -173,7 +140,6 @@ const mockUserId = "86ee0da4-69ff-4ea5-91ed-c7cfe411f0d9";
           </div>
 
           <div className="relative bg-white shadow-2xl border border-slate-200 rounded-sm w-[760px] min-h-[1050px] p-20 mb-12 shrink-0 flex flex-col justify-between">
-            
             <div className="w-full flex-1 flex flex-col justify-between">
               <div>
                 <h2 className="text-xl font-bold tracking-tight text-slate-800 mb-8">Document Page 1</h2>
@@ -187,9 +153,7 @@ const mockUserId = "86ee0da4-69ff-4ea5-91ed-c7cfe411f0d9";
                 </div>
               </div>
 
-              <div className="my-16 text-center text-xs font-bold tracking-[0.25em] text-slate-300 uppercase select-none pointer-events-none">
-                — Document Preview —
-              </div>
+              <div className="my-16 text-center text-xs font-bold tracking-[0.25em] text-slate-300 uppercase select-none pointer-events-none">— Document Preview —</div>
 
               <div className="space-y-4 mb-20">
                 <div className="h-2.5 bg-slate-100 rounded-sm w-full"></div>
@@ -209,62 +173,35 @@ const mockUserId = "86ee0da4-69ff-4ea5-91ed-c7cfe411f0d9";
                 position={{ x: placement.x, y: placement.y }}
                 bounds="parent" 
                 onDragStop={(e, d) => {
-                  setPlacements(
-                    placements.map((p) => (p.id === placement.id ? { ...p, x: d.x, y: d.y } : p))
-                  );
+                  setPlacements(placements.map((p) => (p.id === placement.id ? { ...p, x: d.x, y: d.y } : p)));
                 }}
                 onResizeStop={(e, direction, ref, delta, position) => {
-                  setPlacements(
-                    placements.map((p) =>
-                      p.id === placement.id
-                        ? {
-                            ...p,
-                            width: parseInt(ref.style.width),
-                            height: parseInt(ref.style.height),
-                            ...position,
-                          }
-                        : p
-                    )
-                  );
+                  setPlacements(placements.map((p) => p.id === placement.id ? { ...p, width: parseInt(ref.style.width), height: parseInt(ref.style.height), ...position } : p));
                 }}
                 className="border border-dashed border-amber-600 bg-amber-50/20 group rounded flex items-center justify-center shadow-sm backdrop-blur-[0.5px]"
               >
                 <div className="relative w-full h-full flex items-center justify-center p-2 select-none pointer-events-none">
-                  <img 
-                    src={placement.signatureUrl} 
-                    alt="Signature" 
-                    className="w-full h-full object-contain" 
-                  />
+                  <img src={placement.signatureUrl} alt="Signature" className="w-full h-full object-contain" />
                 </div>
-
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    removePlacement(placement.id);
-                  }}
-                  className="absolute -top-2 -right-2 hidden group-hover:flex bg-red-500 text-white w-4 h-4 rounded-full text-[9px] items-center justify-center shadow-md pointer-events-auto hover:bg-red-600 transition-colors"
-                >
-                  ✕
-                </button>
+                <button onClick={(e) => { e.stopPropagation(); removePlacement(placement.id); }} className="absolute -top-2 -right-2 hidden group-hover:flex bg-red-500 text-white w-4 h-4 rounded-full text-[9px] items-center justify-center shadow-md pointer-events-auto hover:bg-red-600 transition-colors">✕</button>
               </Rnd>
             ))}
-
           </div>
         </div>
 
       </div>
 
-            <SignatureModal 
+      <SignatureModal 
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        onSave={async (dataUrl) => {
-          setSavedSignature(dataUrl);
+        onSave={async (data) => {
+          // data now contains { dataUrl, type } from the modal
+          setSavedSignature(data.dataUrl);
           try {
-            // Push to Spring Boot backend database matching current tab configurations
             await signatureService.saveSignature(mockUserId, {
               label: "My Signature Snapshot",
-              signatureType: dataUrl.startsWith('data:image') ? 'DRAW' : 'TYPE', // generic check
-              signatureDataUrl: dataUrl,
+              signatureType: data.type, // 👈 Dynamically uses DRAW, TYPE, or UPLOAD correctly!
+              signatureDataUrl: data.dataUrl,
               isDefault: true
             });
           } catch (err) {
