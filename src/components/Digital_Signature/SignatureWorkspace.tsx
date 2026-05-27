@@ -1,8 +1,9 @@
 "use client"
 
-import React, { useState } from 'react';
+import React, { useState,useEffect } from 'react';
 import { Rnd } from 'react-rnd';
 import { SignatureModal } from './SignatureModal';
+import { signatureService } from "@/lib/signatureService";
 
 interface Placement {
   id: string;
@@ -17,6 +18,26 @@ export const SignatureWorkspace: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [savedSignature, setSavedSignature] = useState<string | null>(null);
   const [placements, setPlacements] = useState<Placement[]>([]);
+
+  // Replace your hardcoded current mock user string with your active Auth context userId
+const mockUserId = "86ee0da4-69ff-4ea5-91ed-c7cfe411f0d9"; 
+
+  useEffect(() => {
+    const loadSavedSignatures = async () => {
+      try {
+        const saved = await signatureService.getUserSignatures(mockUserId);
+        if (saved && saved.length > 0) {
+          // Find default or use the first available record
+          const defaultSig = saved.find((s: any) => s.isDefault) || saved[0];
+          // Pass the signature image bytea back into a usable dataUrl
+          setSavedSignature(`data:image/png;base64,${defaultSig.signatureImage}`);
+        }
+      } catch (err) {
+        console.error("Could not load user profile signatures:", err);
+      }
+    };
+    loadSavedSignatures();
+  }, [mockUserId]);
 
   const handleAddToPage = () => {
     // Falls back to a clean default state if user clicks add without opening modal
@@ -37,6 +58,7 @@ export const SignatureWorkspace: React.FC = () => {
   const removePlacement = (id: string) => {
     setPlacements(placements.filter(p => p.id !== id));
   };
+
 
   return (
     <div className="flex h-screen w-full flex-col bg-[#F3F4F6] font-sans antialiased text-gray-800 overflow-hidden">
@@ -232,10 +254,23 @@ export const SignatureWorkspace: React.FC = () => {
 
       </div>
 
-      <SignatureModal 
+            <SignatureModal 
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        onSave={(dataUrl) => setSavedSignature(dataUrl)}
+        onSave={async (dataUrl) => {
+          setSavedSignature(dataUrl);
+          try {
+            // Push to Spring Boot backend database matching current tab configurations
+            await signatureService.saveSignature(mockUserId, {
+              label: "My Signature Snapshot",
+              signatureType: dataUrl.startsWith('data:image') ? 'DRAW' : 'TYPE', // generic check
+              signatureDataUrl: dataUrl,
+              isDefault: true
+            });
+          } catch (err) {
+            console.error("Backend sync transaction failed:", err);
+          }
+        }}
       />
     </div>
   );
