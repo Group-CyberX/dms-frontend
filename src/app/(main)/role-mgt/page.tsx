@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   getRoles,
-  getUsers,
+  getAdminUsers,
   type Role,
   type User,
   updateRolePermissions,
@@ -85,6 +85,12 @@ function memberBadge(count: number) {
   );
 }
 
+function getRoleName(role: User["role"] | string | null | undefined): string {
+  if (!role) return "";
+  if (typeof role === "string") return role;
+  return role.name ?? "";
+}
+
 function PermissionCheckbox({
   label,
   checked,
@@ -125,7 +131,7 @@ export default function RoleManagementPage() {
     setError(null);
 
     try {
-      const [rolesData, usersData] = await Promise.all([getRoles(), getUsers()]);
+      const [rolesData, usersData] = await Promise.all([getRoles(), getAdminUsers()]);
       setRoles(rolesData);
       setUsers(usersData);
 
@@ -186,7 +192,7 @@ export default function RoleManagementPage() {
     const map = new Map<string, number>();
 
     for (const user of users) {
-      const roleNameValue = user.role?.name ?? "";
+      const roleNameValue = getRoleName(user.role);
       if (!roleNameValue) continue;
 
       const normalized = roleNameValue.toUpperCase();

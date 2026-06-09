@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { AddUserDialog } from "@/components/user-mgt/AddUserDialog";
 import { EditUserDialog } from "@/components/user-mgt/EditUserDialog";
-import { getUsers, updateUserStatus, type User } from "@/lib/api-client";
+import { getAdminUsers, updateUserStatus, type User } from "@/lib/api-client";
 import {
 	CalendarDays,
 	Plus,
@@ -42,6 +42,12 @@ function toUiStatus(status: string | undefined): UserStatus {
 	return status?.toUpperCase() === "INACTIVE" ? "Inactive" : "Active";
 }
 
+function getRoleName(role: User["role"] | string | null | undefined): string {
+	if (!role) return "N/A";
+	if (typeof role === "string") return role || "N/A";
+	return role.name || "N/A";
+}
+
 function formatCreatedDate(dateValue: string | undefined): string {
 	if (!dateValue) return "N/A";
 
@@ -70,7 +76,7 @@ export default function UserManagementPage() {
 		setLoading(true);
 		setError(null);
 		try {
-			const data = await getUsers();
+			const data = await getAdminUsers();
 			setUsers(data);
 		} catch (err) {
 			const message = err instanceof Error ? err.message : "Failed to load users";
@@ -111,7 +117,7 @@ export default function UserManagementPage() {
 			id: user.userId,
 			name: user.username,
 			email: user.email,
-			role: user.role?.name ?? "N/A",
+			role: getRoleName(user.role),
 			status: toUiStatus(user.status),
 			dateCreated: formatCreatedDate(user.createdAt),
 			raw: user,

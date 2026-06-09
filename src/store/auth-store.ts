@@ -9,6 +9,19 @@ export interface AuthPayload {
   permissions: Record<string, boolean>;
 }
 
+let expiryTimeoutId: ReturnType<typeof setTimeout> | null = null;
+
+function getTokenExpiry(token: string): number | null {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const decoded = JSON.parse(atob(parts[1]));
+    return decoded.exp ? decoded.exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
 interface AuthData {
   token: string;
   email: string;
@@ -55,6 +68,23 @@ export const useAuthStore = create<AuthState>()(
           localStorage.setItem("accessToken", data.accessToken);
           localStorage.setItem("refreshToken", data.refreshToken);
         }
+        
+        // Schedule auto-logout based on access token expiry
+        const expiryTime = getTokenExpiry(data.accessToken);
+        if (expiryTime) {
+          const now = Date.now();
+          const timeUntilExpiry = expiryTime - now - 60000;
+          
+          if (expiryTimeoutId) clearTimeout(expiryTimeoutId);
+          
+          if (timeUntilExpiry > 0) {
+            expiryTimeoutId = setTimeout(() => {
+              console.warn("Access token expired, logging out");
+              useAuthStore.getState().logout();
+            }, timeUntilExpiry);
+          }
+        }
+        
         // Update global state
         set({
           accessToken: data.accessToken,
@@ -68,6 +98,8 @@ export const useAuthStore = create<AuthState>()(
 
       // Logout locally by clearing state and storage
       logout: () => {
+        if (expiryTimeoutId) clearTimeout(expiryTimeoutId);
+        
         if (typeof window !== "undefined") {
           localStorage.removeItem("accessToken");
           localStorage.removeItem("refreshToken");
