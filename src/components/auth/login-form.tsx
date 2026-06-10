@@ -48,6 +48,7 @@ const onSubmit = async (data: LoginFormValues) => {
       accessToken: result.accessToken,
       refreshToken: result.refreshToken,
       email: result.email,
+      userName: result.username,
       role: result.role,
       permissions: result.permissions,
     });

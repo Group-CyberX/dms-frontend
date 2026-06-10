@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
@@ -8,11 +8,14 @@ import { Plus, Folder, Eye, Download, Edit2, FileText, Loader, Trash2, Share2 } 
 import { getDocuments, Document, getFolders, Folder as FolderType, getWorkflows, WorkflowInstance, deleteDocument } from '@/lib/api-client';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/auth-store';
+import { hasPermission } from '@/lib/access-control';
 
 
 export default function DocumentsPage() {
   const router = useRouter();
   const accessToken = useAuthStore((state) => state.accessToken);
+  const role = useAuthStore((state) => state.role);
+  const permissions = useAuthStore((state) => state.permissions);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
@@ -140,13 +143,15 @@ export default function DocumentsPage() {
               <h1 className="text-3xl font-bold text-gray-900">Documents</h1>
               <p className="text-gray-600 text-sm mt-1">Manage and organize your documents</p>
             </div>
-            <Button
-              onClick={() => setUploadDialogOpen(true)}
-              className="bg-[#953002] hover:bg-[#7a2401] text-white font-medium px-6 h-10 rounded-md shadow-sm transition-all"
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              Upload Document
-            </Button>
+            {hasPermission(permissions, role, "canCreateDocument") && (
+              <Button
+                onClick={() => setUploadDialogOpen(true)}
+                className="bg-[#953002] hover:bg-[#7a2401] text-white font-medium px-6 h-10 rounded-md shadow-sm transition-all"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Upload Document
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -330,25 +335,31 @@ export default function DocumentsPage() {
                             <button className="p-1 hover:bg-gray-200 rounded transition" title="View">
                               <Eye className="w-4 h-4 text-gray-600" />
                             </button>
-                            <button className="p-1 hover:bg-gray-200 rounded transition" title="Edit">
-                              <Edit2 className="w-4 h-4 text-gray-600" />
-                            </button>
+                            {hasPermission(permissions, role, "canEditDocument") && (
+                              <button className="p-1 hover:bg-gray-200 rounded transition" title="Edit">
+                                <Edit2 className="w-4 h-4 text-gray-600" />
+                              </button>
+                            )}
                             <button className="p-1 hover:bg-gray-200 rounded transition" title="Download">
                               <Download className="w-4 h-4 text-gray-600" />
                             </button>
-                            <button 
-                              className="p-1 hover:bg-red-100 rounded transition" 
-                              title="Delete"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDelete(doc.document_id, doc.title);
-                              }}
-                            >
-                              <Trash2 className="w-4 h-4 text-red-600" />
-                            </button>
-                            <button className="p-1 hover:bg-gray-200 rounded transition" title="Share">
-                              <Share2 className="w-4 h-4 text-gray-600" />
-                            </button>
+                            {hasPermission(permissions, role, "canDeleteDocument") && (
+                              <button 
+                                className="p-1 hover:bg-red-100 rounded transition" 
+                                title="Delete"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDelete(doc.document_id, doc.title);
+                                }}
+                              >
+                                <Trash2 className="w-4 h-4 text-red-600" />
+                              </button>
+                            )}
+                            {hasPermission(permissions, role, "canShareDocument") && (
+                              <button className="p-1 hover:bg-gray-200 rounded transition" title="Share">
+                                <Share2 className="w-4 h-4 text-gray-600" />
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>

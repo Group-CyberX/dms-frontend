@@ -12,6 +12,7 @@ import {
 } from "@/lib/api-client";
 import { Plus, Users, Save, Loader } from "lucide-react";
 import { CreateRoleDialog } from "../../../components/role-mgt/CreateRoleDialog";
+import { useAuthStore } from "@/store/auth-store";
 
 type PermissionGroup = {
   title: string;
@@ -19,18 +20,25 @@ type PermissionGroup = {
 };
 
 const PERMISSIONS: PermissionGroup[] = [
+  { title: "Dashboard", permissions: ["View", "View Analytics"] },
   { title: "Documents", permissions: ["View", "Create", "Edit", "Delete", "Share"] },
+  { title: "Search", permissions: ["View", "Advanced Search"] },
+  { title: "Tasks", permissions: ["View", "Create", "Edit", "Delete"] },
   { title: "Workflows", permissions: ["View", "Create", "Approve", "Edit", "Delete"] },
+  { title: "Recycle Bin", permissions: ["View", "Restore", "Permanently Delete"] },
+  { title: "Audit Logs", permissions: ["View", "Export"] },
   { title: "ERP Integration", permissions: ["View", "Configure", "Sync", "Delete"] },
+  { title: "Policies", permissions: ["View", "Create", "Edit", "Delete"] },
   { title: "Users", permissions: ["View", "Create", "Edit", "Delete"] },
   { title: "Roles", permissions: ["View", "Create", "Edit", "Delete"] },
-  { title: "Audit Logs", permissions: ["View", "Export"] },
   { title: "System", permissions: ["View Health", "Configure", "Backup", "Restore"] },
+  { title: "Settings", permissions: ["View", "Edit"] },
 ];
 
 const cellKey = (group: string, permission: string) => `${group}::${permission}`;
 
 function toSingular(name: string): string {
+  if (name.endsWith("ies")) return name.slice(0, -3) + "y";
   if (name.endsWith("s")) return name.slice(0, -1);
   return name;
 }
@@ -246,6 +254,11 @@ export default function RoleManagementPage() {
 
       await loadData();
       setSelectedRoleId(updated.roleId);
+
+      // Refresh the current user's session so sidebar & route guards
+      // immediately reflect the updated permissions (no re-login needed)
+      await useAuthStore.getState().refreshSession();
+
       setSaveMessage("Permissions saved successfully");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to save role";

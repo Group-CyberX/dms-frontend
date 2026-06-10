@@ -5,6 +5,7 @@ export interface AuthPayload {
   accessToken: string;
   refreshToken: string;
   email: string;
+  userName?: string;
   role: string;
   permissions: Record<string, boolean>;
 }
@@ -44,6 +45,7 @@ interface AuthState {
   setAuth: (data: AuthPayload) => void;
   logout: () => void;
   logoutAsync: () => Promise<void>;
+  refreshSession: () => Promise<boolean>;
 }
 
 // Zustand store for managing authentication state across the app
@@ -90,6 +92,7 @@ export const useAuthStore = create<AuthState>()(
           accessToken: data.accessToken,
           refreshToken: data.refreshToken,
           email: data.email,
+          userName: data.userName ?? get().userName ?? null,
           role: data.role,
           permissions: data.permissions ?? {},
           hasHydrated: true,
@@ -137,6 +140,40 @@ export const useAuthStore = create<AuthState>()(
 
         // Clear local auth state
         get().logout();
+      },
+
+      // Refresh the current session to pick up latest role/permissions from the database.
+      // Call this after updating role permissions so sidebar & route guards reflect changes.
+      refreshSession: async () => {
+        const currentRefreshToken = get().refreshToken;
+        if (!currentRefreshToken) return false;
+
+        try {
+          const response = await fetch('http://localhost:8081/auth/refresh', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refreshToken: currentRefreshToken }),
+          });
+
+          if (!response.ok) return false;
+
+          const data = await response.json();
+          if (data.accessToken) {
+            get().setAuth({
+              accessToken: data.accessToken,
+              refreshToken: data.refreshToken || currentRefreshToken,
+              email: data.email || get().email || '',
+              userName: data.username || get().userName || '',
+              role: data.role || get().role || '',
+              permissions: data.permissions || {},
+            });
+            return true;
+          }
+        } catch (err) {
+          console.error('Failed to refresh session:', err);
+        }
+
+        return false;
       },
     }),
     {

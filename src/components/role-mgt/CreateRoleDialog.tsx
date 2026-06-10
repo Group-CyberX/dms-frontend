@@ -25,13 +25,19 @@ type CreateRoleDialogProps = {
 };
 
 const CREATE_ROLE_PERMISSIONS: PermissionGroup[] = [
+  { title: "Dashboard", permissions: ["View", "View Analytics"] },
   { title: "Documents", permissions: ["View", "Create", "Edit", "Delete", "Share"] },
+  { title: "Search", permissions: ["View", "Advanced Search"] },
+  { title: "Tasks", permissions: ["View", "Create", "Edit", "Delete"] },
   { title: "Workflows", permissions: ["View", "Create", "Approve", "Edit", "Delete"] },
+  { title: "Recycle Bin", permissions: ["View", "Restore", "Permanently Delete"] },
+  { title: "Audit Logs", permissions: ["View", "Export"] },
   { title: "ERP Integration", permissions: ["View", "Configure", "Sync", "Delete"] },
+  { title: "Policies", permissions: ["View", "Create", "Edit", "Delete"] },
   { title: "Users", permissions: ["View", "Create", "Edit", "Delete"] },
   { title: "Roles", permissions: ["View", "Create", "Edit", "Delete"] },
-  { title: "Audit Logs", permissions: ["View", "Export"] },
   { title: "System", permissions: ["View Health", "Configure", "Backup", "Restore"] },
+  { title: "Settings", permissions: ["View", "Edit"] },
 ];
 
 export function CreateRoleDialog({
@@ -56,7 +62,9 @@ export function CreateRoleDialog({
     const payload: Record<string, boolean> = {};
 
     for (const group of CREATE_ROLE_PERMISSIONS) {
-      const singularGroup = group.title.endsWith("s")
+      const singularGroup = group.title.endsWith("ies")
+        ? group.title.slice(0, -3) + "y"
+        : group.title.endsWith("s")
         ? group.title.slice(0, -1)
         : group.title;
 

@@ -66,6 +66,7 @@ export default function MainLayout({
 
   const token = useAuthStore((state) => state.accessToken);
   const email = useAuthStore((state) => state.email);
+  const userName = useAuthStore((state) => state.userName);
   const role = useAuthStore((state) => state.role);
   const permissions = useAuthStore((state) => state.permissions);
   const hasHydrated = useAuthStore((state) => state.hasHydrated);
@@ -106,12 +107,15 @@ export default function MainLayout({
   }, [token, pathname, role, permissions, router, hasHydrated]);
 
   const displayName = useMemo(() => {
+    // Prefer the actual username from the database
+    if (userName) return userName;
+    // Fallback: derive from email only if no username is available
     if (!email) return "User";
     const [left] = email.split("@");
     return left
       .replace(/[._-]+/g, " ")
       .replace(/\b\w/g, (match) => match.toUpperCase());
-  }, [email]);
+  }, [userName, email]);
 
   const initials = useMemo(() => {
     return displayName

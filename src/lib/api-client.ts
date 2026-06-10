@@ -55,6 +55,7 @@ async function refreshAccessToken(): Promise<boolean> {
           accessToken: data.accessToken,
           refreshToken: data.refreshToken || refreshToken,
           email: data.email || store.email || "",
+          userName: data.username || store.userName || "",
           role: data.role || store.role || "",
           permissions: data.permissions || store.permissions || {},
         });

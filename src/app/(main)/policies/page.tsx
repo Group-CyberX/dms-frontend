@@ -5,6 +5,8 @@ import { Pencil, Trash2, FileText, Clock, Layers, Lock, Tag, Loader } from 'luci
 import { fetchWithAuth } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import CreateWorkflowTemplateDialog from '@/components/ui/workflow/create-workflow-template-dialog';
+import { useAuthStore } from '@/store/auth-store';
+import { hasPermission } from '@/lib/access-control';
 
 // Workflow Template structure
 type WorkflowTemplate = {
@@ -47,6 +49,9 @@ type TemplateRow = {
 };
 
 export default function PoliciesPage() {
+  const role = useAuthStore((state) => state.role);
+  const permissions = useAuthStore((state) => state.permissions);
+
   const [open, setOpen] = useState(false);
   const [editingTemplateId, setEditingTemplateId] = useState<number | null>(null);
 
@@ -272,12 +277,14 @@ export default function PoliciesPage() {
           <div className="mb-6 flex items-center justify-between gap-4">
             <h2 className="text-lg font-semibold">Workflow Templates</h2>
 
-            <Button
-              onClick={handleCreate}
-              className="bg-[#a34713] px-4 py-2 text-base font-medium text-white hover:bg-[#8e3d10]"
-            >
-              + Create Workflow
-            </Button>
+            {hasPermission(permissions, role, "canCreatePolicy") && (
+              <Button
+                onClick={handleCreate}
+                className="bg-[#a34713] px-4 py-2 text-base font-medium text-white hover:bg-[#8e3d10]"
+              >
+                + Create Workflow
+              </Button>
+            )}
           </div>
 
           <div className="grid grid-cols-[2.2fr_0.8fr_1.5fr_1fr_1fr_0.8fr] border-b pb-3 text-sm text-gray-500">
@@ -331,22 +338,26 @@ export default function PoliciesPage() {
                 </div>
 
                 <div className="flex gap-3">
-                  <button
-                    type="button"
-                    onClick={() => handleEdit(row.template.id)}
-                    className="text-gray-600 transition hover:text-[#8B4513]"
-                    aria-label={`Edit ${row.template.name}`}
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDelete(row.template.id)}
-                    className="text-red-500 transition hover:text-red-700"
-                    aria-label={`Delete ${row.template.name}`}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                  {hasPermission(permissions, role, "canEditPolicy") && (
+                    <button
+                      type="button"
+                      onClick={() => handleEdit(row.template.id)}
+                      className="text-gray-600 transition hover:text-[#8B4513]"
+                      aria-label={`Edit ${row.template.name}`}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                  )}
+                  {hasPermission(permissions, role, "canDeletePolicy") && (
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(row.template.id)}
+                      className="text-red-500 transition hover:text-red-700"
+                      aria-label={`Delete ${row.template.name}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
                 </div>
               </div>
             ))}

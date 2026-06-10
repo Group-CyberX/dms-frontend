@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button';
 import { getDocument, getDocumentVersions, Document, DocumentVersion, getDocumentTags, addTagToDocument, Tag, uploadNewVersion, downloadDocumentVersion, restoreDocumentVersion, deleteDocumentVersion, getWorkflows, WorkflowInstance } from '@/lib/api-client';
 import  ShareDocumentDialog  from '@/components/ui/share/share-document-dialog';
 import { DocumentPreview } from '@/components/ui/DocumentPreview';
+import { useAuthStore } from '@/store/auth-store';
+import { hasPermission } from '@/lib/access-control';
 import {
   ArrowLeft,
   Share2,
@@ -26,6 +28,8 @@ export default function DocumentDetailPage() {
   const params = useParams();
   const router = useRouter();
   const documentId = params.id as string;
+  const role = useAuthStore((state) => state.role);
+  const permissions = useAuthStore((state) => state.permissions);
 
   const [document, setDocument] = useState<Document | null>(null);
   const [versions, setVersions] = useState<DocumentVersion[]>([]);
@@ -391,13 +395,15 @@ export default function DocumentDetailPage() {
             <h1 className="text-3xl font-bold text-gray-900">{document.title}</h1>
             <div className="flex gap-3">
               <div className="flex gap-3">
-              <Button 
-                className="bg-[#953002] hover:bg-[#7a2401] text-white"
-                onClick={() => setShareDialogOpen(true)}
-              >
-                <Share2 className="w-4 h-4 mr-2" />
-                Share
-              </Button>
+              {hasPermission(permissions, role, "canShareDocument") && (
+                <Button 
+                  className="bg-[#953002] hover:bg-[#7a2401] text-white"
+                  onClick={() => setShareDialogOpen(true)}
+                >
+                  <Share2 className="w-4 h-4 mr-2" />
+                  Share
+                </Button>
+              )}
               <Button 
                 className="bg-[#953002] hover:bg-[#7a2401] text-white"
                 onClick={() => document.current_version_id && handleDownloadVersion(document.current_version_id)}
@@ -405,13 +411,15 @@ export default function DocumentDetailPage() {
                 <Download className="w-4 h-4 mr-2" />
                 Download
               </Button>
-              <Button 
-                className="bg-[#953002] hover:bg-[#7a2401] text-white"
-                onClick={() => setUploadDialogOpen(true)}
-              >
-                <Upload className="w-4 h-4 mr-2" />
-                New Version
-              </Button>
+              {hasPermission(permissions, role, "canEditDocument") && (
+                <Button 
+                  className="bg-[#953002] hover:bg-[#7a2401] text-white"
+                  onClick={() => setUploadDialogOpen(true)}
+                >
+                  <Upload className="w-4 h-4 mr-2" />
+                  New Version
+                </Button>
+              )}
               </div>
             </div>
           </div>
@@ -488,11 +496,12 @@ export default function DocumentDetailPage() {
                         handleAddTag();
                       }
                     }}
-                    className="flex-1 px-3 py-1 rounded border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#953002]"
+                    disabled={!hasPermission(permissions, role, "canEditDocument")}
+                    className="flex-1 px-3 py-1 rounded border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#953002] disabled:bg-gray-100 disabled:cursor-not-allowed"
                   />
                   <button
                     onClick={handleAddTag}
-                    disabled={addingTag || !newTagInput.trim()}
+                    disabled={addingTag || !newTagInput.trim() || !hasPermission(permissions, role, "canEditDocument")}
                     className="px-3 py-1 rounded text-sm font-medium bg-[#953002] text-white hover:bg-[#7a2401] disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Add
@@ -541,7 +550,7 @@ export default function DocumentDetailPage() {
                             <Download className="w-4 h-4 text-gray-600" />
                           )}
                         </button>
-                        {version.version_id !== document.current_version_id && (
+                        {version.version_id !== document.current_version_id && hasPermission(permissions, role, "canEditDocument") && (
                           <button 
                             onClick={() => handleRestoreVersion(version.version_id)}
                             disabled={restoringVersionId === version.version_id}
