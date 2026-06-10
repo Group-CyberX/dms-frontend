@@ -8,7 +8,8 @@ import NavigationSideBar from "@/components/NavigationItem/NavigationSideBar";
 import { formatRoleLabel, canAccessPath } from "@/lib/access-control";
 import { useAuthStore, setupCrossWindowLogoutDetection } from "@/store/auth-store";
 import { notificationService } from "@/lib/notificationServices";
-import { Bell, Check, FileText, Search, ChevronDown } from "lucide-react";
+import { apiClient } from "@/lib/api-client";
+import { Bell, Check, FileText, Search, ChevronDown, User, Settings, LogOut } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
 type NotificationItem = {
@@ -70,12 +71,16 @@ export default function MainLayout({
   const role = useAuthStore((state) => state.role);
   const permissions = useAuthStore((state) => state.permissions);
   const hasHydrated = useAuthStore((state) => state.hasHydrated);
+  const profilePicture = useAuthStore((state) => state.profilePicture);
+  const setProfilePicture = useAuthStore((state) => state.setProfilePicture);
 
   const [hydrated, setHydrated] = useState(false);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [selectedNotification, setSelectedNotification] = useState<NotificationItem | null>(null);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
   const notificationRef = useRef<HTMLDivElement>(null);
+  const profileRef = useRef<HTMLDivElement>(null);
   const hydratedRef = useRef(false);
 
   useLayoutEffect(() => {
@@ -139,6 +144,7 @@ export default function MainLayout({
     let cancelled = false;
 
     const fetchNotifications = async () => {
+      if (cancelled) return;
       try {
         const data = await notificationService.getAll();
         if (!cancelled) {
@@ -151,24 +157,39 @@ export default function MainLayout({
       }
     };
 
+    const fetchProfile = async () => {
+      try {
+        const data = await apiClient.get("/api/profile");
+        if (data && data.profilePicture) {
+          setProfilePicture(data.profilePicture);
+        }
+      } catch (err) {
+        console.error("Failed to fetch profile picture", err);
+      }
+    };
+
+    fetchProfile();
     fetchNotifications();
     const interval = setInterval(fetchNotifications, 5000);
     return () => {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [hydrated, token]);
+  }, [hydrated, token, setProfilePicture]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (isNotificationOpen && notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
         setIsNotificationOpen(false);
       }
+      if (isProfileOpen && profileRef.current && !profileRef.current.contains(event.target as Node)) {
+        setIsProfileOpen(false);
+      }
     }
 
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [isNotificationOpen]);
+  }, [isNotificationOpen, isProfileOpen]);
 
   const unreadCount = notifications.filter((notification) => !(notification.isRead ?? notification.read)).length;
 
@@ -324,19 +345,67 @@ export default function MainLayout({
                 )}
               </div>
 
-              <div className="flex items-center gap-3 border-l border-slate-200 pl-4">
-                <div className="hidden text-right leading-tight sm:block">
-                  <p className="text-sm font-semibold text-slate-800">{displayName}</p>
-                  <p className="text-[11px] uppercase tracking-tight text-slate-500">
-                    {roleLabel}
-                  </p>
+              <div className="relative border-l border-slate-200 pl-4" ref={profileRef}>
+                <div 
+                  className="flex items-center gap-3 cursor-pointer hover:bg-slate-50 p-1 rounded-md transition-colors"
+                  onClick={() => setIsProfileOpen(!isProfileOpen)}
+                >
+                  <div className="hidden text-right leading-tight sm:block">
+                    <p className="text-[15px] font-medium text-slate-800">{displayName}</p>
+                    <p className="text-[11px] font-medium uppercase tracking-tight text-slate-500">
+                      {roleLabel}
+                    </p>
+                  </div>
+
+                  <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-[#953002] text-sm font-bold text-white shadow-sm">
+                    {profilePicture ? (
+                      <img src={profilePicture} alt="Profile" className="h-full w-full object-cover" />
+                    ) : (
+                      initials || "U"
+                    )}
+                  </div>
+
+                  <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${isProfileOpen ? "rotate-180" : ""}`} />
                 </div>
 
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#953002] text-sm font-bold text-white shadow-sm">
-                  {initials || "U"}
-                </div>
-
-                <ChevronDown className="h-4 w-4 text-slate-400" />
+                {isProfileOpen && (
+                  <div className="absolute right-0 mt-3 w-48 overflow-hidden rounded-lg border bg-white shadow-xl z-50">
+                    <div className="border-b bg-gray-50 px-4 py-2">
+                      <p className="text-xs font-medium uppercase text-gray-500">My Account</p>
+                    </div>
+                    <div className="py-1">
+                      <Link
+                        href="/profile"
+                        className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-100"
+                        onClick={() => setIsProfileOpen(false)}
+                      >
+                        <User className="h-4 w-4 text-gray-500" />
+                        Profile
+                      </Link>
+                      <Link
+                        href="/settings"
+                        className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-100"
+                        onClick={() => setIsProfileOpen(false)}
+                      >
+                        <Settings className="h-4 w-4 text-gray-500" />
+                        Settings
+                      </Link>
+                    </div>
+                    <div className="border-t py-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          useAuthStore.getState().logout();
+                          router.push("/login");
+                        }}
+                        className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-100"
+                      >
+                        <LogOut className="h-4 w-4 text-gray-500" />
+                        Logout
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </header>

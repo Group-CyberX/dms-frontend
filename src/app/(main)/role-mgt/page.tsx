@@ -9,8 +9,9 @@ import {
   type Role,
   type User,
   updateRolePermissions,
+  deleteRole,
 } from "@/lib/api-client";
-import { Plus, Users, Save, Loader } from "lucide-react";
+import { Plus, Users, Save, Loader, Trash2 } from "lucide-react";
 import { CreateRoleDialog } from "../../../components/role-mgt/CreateRoleDialog";
 import { useAuthStore } from "@/store/auth-store";
 
@@ -32,7 +33,7 @@ const PERMISSIONS: PermissionGroup[] = [
   { title: "Users", permissions: ["View", "Create", "Edit", "Delete"] },
   { title: "Roles", permissions: ["View", "Create", "Edit", "Delete"] },
   { title: "System", permissions: ["View Health", "Configure", "Backup", "Restore"] },
-  { title: "Settings", permissions: ["View", "Edit"] },
+  { title: "Settings", permissions: ["View", "Edit", "Manage API Keys", "Manage Document Policy", "Manage Access Control", "Execute Danger Zone"] },
 ];
 
 const cellKey = (group: string, permission: string) => `${group}::${permission}`;
@@ -268,6 +269,35 @@ export default function RoleManagementPage() {
     }
   };
 
+  const handleDeleteRole = async () => {
+    if (!selectedRole) return;
+    
+    // Prevent deletion of SYSTEM_ADMIN role
+    if (selectedRole.name === "SYSTEM_ADMIN") {
+      setError("The SYSTEM_ADMIN role cannot be deleted.");
+      return;
+    }
+
+    if (!window.confirm(`Are you sure you want to delete the ${selectedRole.name} role? This cannot be undone.`)) {
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+    setSaveMessage(null);
+
+    try {
+      await deleteRole(selectedRole.roleId);
+      setSaveMessage("Role successfully deleted.");
+      setSelectedRoleId(null);
+      await loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete role");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="-m-6 min-h-[calc(100vh-4rem)] overflow-y-auto bg-[#e1e1e1] px-6 py-6 md:px-8 md:py-8">
       <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-5">
@@ -396,6 +426,19 @@ export default function RoleManagementPage() {
                   <Save className="h-4 w-4" />
                   {saving ? "Saving..." : "Save Changes"}
                 </Button>
+
+                {selectedRole?.name !== "SYSTEM_ADMIN" && (
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    onClick={handleDeleteRole}
+                    disabled={saving}
+                    className="h-9 rounded-md px-4 text-sm font-medium shadow-sm"
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Delete
+                  </Button>
+                )}
 
                 <Button
                   type="button"

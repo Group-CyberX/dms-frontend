@@ -41,8 +41,10 @@ interface AuthState {
   userName: string | null;
   permissions: Record<string, boolean>;
   hasHydrated: boolean;
+  profilePicture: string | null;
 
   setAuth: (data: AuthPayload) => void;
+  setProfilePicture: (pic: string | null) => void;
   logout: () => void;
   logoutAsync: () => Promise<void>;
   refreshSession: () => Promise<boolean>;
@@ -63,6 +65,7 @@ export const useAuthStore = create<AuthState>()(
       userName: null,
       permissions: {},
       hasHydrated: false,
+      profilePicture: null,
 
       // Set authentication data after login
       setAuth: (data) => {
@@ -98,6 +101,8 @@ export const useAuthStore = create<AuthState>()(
           hasHydrated: true,
         });
       },
+
+      setProfilePicture: (pic) => set({ profilePicture: pic }),
 
       // Logout locally by clearing state and storage
       logout: () => {
@@ -184,6 +189,16 @@ export const useAuthStore = create<AuthState>()(
           state.hasHydrated = true;
         }
       },
+      partialize: (state) => ({
+        accessToken: state.accessToken,
+        refreshToken: state.refreshToken,
+        email: state.email,
+        role: state.role,
+        userId: state.userId,
+        userName: state.userName,
+        permissions: state.permissions,
+        // profilePicture is omitted so we don't save huge base64 strings in localStorage
+      }),
     }
   )
 );

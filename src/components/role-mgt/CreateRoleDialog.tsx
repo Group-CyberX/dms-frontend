@@ -37,7 +37,7 @@ const CREATE_ROLE_PERMISSIONS: PermissionGroup[] = [
   { title: "Users", permissions: ["View", "Create", "Edit", "Delete"] },
   { title: "Roles", permissions: ["View", "Create", "Edit", "Delete"] },
   { title: "System", permissions: ["View Health", "Configure", "Backup", "Restore"] },
-  { title: "Settings", permissions: ["View", "Edit"] },
+  { title: "Settings", permissions: ["View", "Edit", "Manage API Keys", "Manage Document Policy", "Manage Access Control", "Execute Danger Zone"] },
 ];
 
 export function CreateRoleDialog({
@@ -69,7 +69,7 @@ export function CreateRoleDialog({
         : group.title;
 
       for (const permission of group.permissions) {
-        const key = `${group}::${permission}`;
+        const key = `${group.title}::${permission}`;
         const apiKey = `can${permission.replace(/\s+/g, "")}${singularGroup.replace(/\s+/g, "")}`;
         payload[apiKey] = permissionState[key] ?? false;
       }

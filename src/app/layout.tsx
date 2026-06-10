@@ -4,6 +4,7 @@ import "./globals.css";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import NavigationSideBar from "@/components/NavigationItem/NavigationSideBar";
 import { Header } from "@/components/NavigationItem/Header";
+import { Toaster } from "react-hot-toast";
 
 
 const geistSans = Geist({
@@ -30,6 +31,7 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         {children}
+        <Toaster position="bottom-right" />
       </body>
     </html>
   );

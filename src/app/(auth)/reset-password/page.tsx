@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { KeyRound, Clock, Check, X, Circle, AlertTriangle, Loader2 } from "lucide-react";
 import Link from "next/link";
+import toast from "react-hot-toast";
 
 // ── Constants ──────────────────────────────────────────────────────
 const TOTAL_SECONDS = 15 * 60; // 15 minutes
@@ -156,10 +157,11 @@ function ResetPasswordForm() {
       }
 
       setSubmitSuccess(true);
+      toast.success("Password reset successful!");
       setTimeout(() => router.push("/login"), 2000);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Something went wrong. Please try again.";
-      setSubmitError(message);
+      toast.error(message);
     } finally {
       setIsSubmitting(false);
     }
