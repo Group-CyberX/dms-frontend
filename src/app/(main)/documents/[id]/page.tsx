@@ -1,11 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useDropzone } from 'react-dropzone';
 import { Button } from '@/components/ui/button';
 import { getDocument, getDocumentVersions, Document, DocumentVersion, getDocumentTags, addTagToDocument, Tag, uploadNewVersion, downloadDocumentVersion, restoreDocumentVersion, deleteDocumentVersion, getWorkflows, WorkflowInstance } from '@/lib/api-client';
-import  ShareDocumentDialog  from '@/components/ui/share/share-document-dialog';
+import ShareDocumentDialog from '@/components/ui/share/share-document-dialog';
+import ApprovalActions from '@/components/ui/workflow/approval-actions';
 import { DocumentPreview } from '@/components/ui/DocumentPreview';
 import {
   ArrowLeft,
@@ -25,7 +26,9 @@ import {
 export default function DocumentDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const documentId = params.id as string;
+  const taskId = searchParams?.get('taskId');
 
   const [document, setDocument] = useState<Document | null>(null);
   const [versions, setVersions] = useState<DocumentVersion[]>([]);
@@ -420,7 +423,7 @@ export default function DocumentDetailPage() {
 
       <div className="p-6">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2">
+          <div className="lg:col-span-2 space-y-6">
             <div className="bg-white rounded-lg shadow-sm p-8">
               {previewLoading ? (
                 <div className="flex items-center justify-center h-96">
@@ -433,6 +436,43 @@ export default function DocumentDetailPage() {
                 <DocumentPreview url={previewUrl} type={previewType} title={document.title} />
               )}
             </div>
+
+            {/* Approval Actions Section - Only shown when taskId is present */}
+            {taskId && document && (
+              <ApprovalActions
+                taskId={parseInt(taskId, 10)}
+                documentName={document.title}
+                onApprovalComplete={() => {
+                  // Refresh document data after approval/rejection
+                  if (documentId) {
+                    const fetchData = async () => {
+                      try {
+                        const [docData, workflowsData] = await Promise.all([
+                          getDocument(documentId),
+                          getWorkflows(),
+                        ]);
+                        setDocument(docData);
+                        
+                        // Update workflow status
+                        const workflows = Array.isArray(workflowsData) ? workflowsData as WorkflowInstance[] : [];
+                        const docWorkflows = workflows.filter(
+                          (w) => String(w.documentId ?? w.document_id ?? '') === String(documentId)
+                        );
+                        if (docWorkflows.length > 0) {
+                          const latestWorkflow = docWorkflows.reduce((latest, current) =>
+                            (current.id && latest.id && current.id > latest.id) ? current : latest
+                          );
+                          setWorkflowStatus(latestWorkflow.status || null);
+                        }
+                      } catch (err) {
+                        console.error('Error refreshing document:', err);
+                      }
+                    };
+                    fetchData();
+                  }
+                }}
+              />
+            )}
           </div>
 
           <div className="space-y-6">

@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import { Loader } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/store/auth-store';
@@ -64,6 +65,7 @@ type TaskRow = {
   task: WorkflowTask;
   workflow: WorkflowInstance | null;
   documentTitle: string;
+  documentId: string;
   assigneeLabel: string;
   isAssignedToMe: boolean;
   isOverdue: boolean;
@@ -338,6 +340,7 @@ export default function MyTasksPage() {
           workflow,
           documentTitle:
             document?.title ?? document?.name ?? document?.documentName ?? document?.filename ?? 'Untitled Document',
+          documentId: String(workflowDocumentId),
           assigneeLabel,
           isAssignedToMe,
           isOverdue,
@@ -533,7 +536,12 @@ export default function MyTasksPage() {
 
                     {/* Document Title */}
                     <td className="p-2">
-                      <div className="font-medium text-gray-900">{row.documentTitle}</div>
+                      <Link 
+                        href={`/documents/${row.documentId}?taskId=${row.task.id}`}
+                        className="font-medium text-[#953002] hover:text-[#7a2401] hover:underline cursor-pointer"
+                      >
+                        {row.documentTitle}
+                      </Link>
                     </td>
 
                     {/* Workflow Name */}
