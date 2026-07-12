@@ -938,3 +938,139 @@ export async function updateRolePermissions(
 
   return response.json();
 }
+
+export interface SearchHistoryItem {
+  searchId: string;
+  query: string;
+  documentId: string;
+  documentTitle: string;
+  timestamp: string;
+}
+
+/**
+ * Get search history for the current user
+ */
+export async function getSearchHistory(): Promise<SearchHistoryItem[]> {
+  const response = await fetch(`${API_BASE_URL}/search/history`, {
+    headers: getAuthHeader(),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch search history: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Clear search history for the current user
+ */
+export async function clearSearchHistory(): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/search/history`, {
+    method: 'DELETE',
+    headers: getAuthHeader(),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to clear search history: ${response.statusText}`);
+  }
+}
+
+/**
+ * Log a clicked search result to history
+ */
+export async function logSearchClick(query: string, documentId: string): Promise<void> {
+  const response = await fetchWithAuth(`${API_BASE_URL}/search/log`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      query,
+      clickedDocId: documentId,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to log search click: ${response.statusText}`);
+  }
+}
+
+export interface ProcessingJob {
+  jobId: string;
+  documentVersionId: string;
+  jobType: string;
+  status: string; // "PENDING", "IN_PROGRESS", "SUCCESS", "FAILED"
+  createdAt?: string;
+}
+
+/**
+ * Fetch jobs for a document
+ */
+export async function getDocumentJobs(documentId: string): Promise<ProcessingJob[]> {
+  const response = await fetchWithAuth(`${API_BASE_URL}/jobs?documentId=${documentId}`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch processing jobs');
+  }
+  return response.json();
+}
+
+export interface DocumentMetadata {
+  metadataId: string;
+  documentId: string;
+  key: string;
+  value: string;
+}
+
+/**
+ * Get all metadata for a document
+ */
+export async function getDocumentMetadata(documentId: string): Promise<DocumentMetadata[]> {
+  const response = await fetchWithAuth(`${API_BASE_URL}/metadata/document/${documentId}`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch metadata: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+/**
+ * Add metadata to a document
+ */
+export async function addMetadata(documentId: string, key: string, value: string): Promise<DocumentMetadata> {
+  const response = await fetchWithAuth(`${API_BASE_URL}/metadata/document/${documentId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ key, value }),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to add metadata: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+/**
+ * Update metadata for a document
+ */
+export async function updateMetadata(documentId: string, key: string, value: string): Promise<DocumentMetadata> {
+  const response = await fetchWithAuth(`${API_BASE_URL}/metadata/document/${documentId}/${encodeURIComponent(key)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ key, value }),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to update metadata: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+/**
+ * Delete metadata from a document
+ */
+export async function deleteMetadata(documentId: string, key: string): Promise<void> {
+  const response = await fetchWithAuth(`${API_BASE_URL}/metadata/document/${documentId}/${encodeURIComponent(key)}`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to delete metadata: ${response.statusText}`);
+  }
+}
