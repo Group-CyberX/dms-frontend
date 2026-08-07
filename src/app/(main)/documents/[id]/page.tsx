@@ -39,6 +39,7 @@ export default function DocumentDetailPage() {
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [newVersionFile, setNewVersionFile] = useState<File | null>(null);
   const [uploadingVersion, setUploadingVersion] = useState(false);
+  const [versionUploadProgress, setVersionUploadProgress] = useState(0);
   const [downloadingVersionId, setDownloadingVersionId] = useState<string | null>(null);
   const [restoringVersionId, setRestoringVersionId] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -275,9 +276,17 @@ export default function DocumentDetailPage() {
 
     try {
       setUploadingVersion(true);
+      setVersionUploadProgress(0);
       setUploadError(null);
       setUploadSuccess(null);
-      const newVersion = await uploadNewVersion(document.document_id, newVersionFile);
+      const newVersion = await uploadNewVersion(
+        document.document_id,
+        newVersionFile,
+        (progress) => {
+          setVersionUploadProgress(progress.percentage);
+          console.log(`[Dialog] Version upload: ${(progress.loaded / 1024 / 1024).toFixed(2)}MB / ${(progress.total / 1024 / 1024).toFixed(2)}MB = ${progress.percentage.toFixed(1)}%`);
+        }
+      );
       setVersions([newVersion, ...versions]);
       
       // Update document with new version ID to trigger preview reload
@@ -286,6 +295,7 @@ export default function DocumentDetailPage() {
       setUploadSuccess('New version uploaded successfully!');
       setUploadDialogOpen(false);
       setNewVersionFile(null);
+      setVersionUploadProgress(0);
       setTimeout(() => setUploadSuccess(null), 3000);
     } catch (err) {
       console.error('Error uploading version:', err);
@@ -293,6 +303,7 @@ export default function DocumentDetailPage() {
       setUploadError(errorMessage);
     } finally {
       setUploadingVersion(false);
+      setVersionUploadProgress(0);
     }
   };
 
@@ -656,6 +667,22 @@ export default function DocumentDetailPage() {
               <p className="text-xs text-gray-500 text-center">
                 Supported formats: PDF, DOCX, XLSX, PNG, JPG, JPEG
               </p>
+
+              {/* Progress Bar */}
+              {uploadingVersion && (
+                <div className="mt-4 space-y-2 p-3 bg-gray-50 rounded-lg">
+                  <div className="flex justify-between text-xs">
+                    <span className="font-medium text-gray-700">Uploading version...</span>
+                    <span className="text-gray-600">{versionUploadProgress.toFixed(0)}%</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div
+                      className="bg-[#953002] h-2 rounded-full transition-all duration-300"
+                      style={{ width: `${versionUploadProgress}%` }}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Footer */}
