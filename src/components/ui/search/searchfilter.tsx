@@ -68,7 +68,7 @@ function normalizeOptions(values: unknown): string[] {
 }
 
 function toOptionValue(label: string): string {
-  return label.toLowerCase().replace(/\s+/g, "-")
+  return label; // Keep exact label to match backend exactly without hyphens
 }
 
 // Helper component for uniform filter inputs
@@ -106,6 +106,59 @@ function FilterField({
   )
 }
 
+function AutocompleteField({
+  label,
+  placeholder,
+  options = [],
+  value,
+  onChange
+}: {
+  label: string
+  placeholder: string
+  options?: string[]
+  value: string
+  onChange: (value: string) => void
+}) {
+  const [isOpen, setIsOpen] = React.useState(false)
+  const filteredOptions = options.filter(opt => opt.toLowerCase().includes(value.toLowerCase()))
+
+  return (
+    <div className="space-y-2 relative">
+      <label className="text-sm font-medium text-slate-600">
+        {label}
+      </label>
+      <Input
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => {
+          onChange(e.target.value)
+          setIsOpen(true)
+        }}
+        onFocus={() => setIsOpen(true)}
+        onBlur={() => setTimeout(() => setIsOpen(false), 200)}
+        className="h-10 bg-white border-slate-200 focus:ring-[#953002]/20"
+      />
+      {isOpen && filteredOptions.length > 0 && (
+        <div className="absolute z-10 top-[calc(100%+4px)] w-full bg-white border border-slate-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
+          {filteredOptions.map((opt) => (
+            <div
+              key={opt}
+              className="px-3 py-2 text-sm cursor-pointer hover:bg-slate-100"
+              onClick={() => {
+                onChange(opt)
+                setIsOpen(false)
+              }}
+              onMouseDown={(e) => e.preventDefault()}
+            >
+              {opt}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // Named export with useImperativeHandle
 export const SearchFilters = React.forwardRef<SearchFiltersRef, {
   onSearch?: (filters: AdvancedSearchFilters) => void
@@ -120,7 +173,7 @@ export const SearchFilters = React.forwardRef<SearchFiltersRef, {
   const [isLoading, setIsLoading] = React.useState(false)
   
   // Dropdown options states
-  const [documentTypes, setDocumentTypes] = React.useState<string[]>(["Invoice", "Contract", "Report", "Memo"])
+  const [documentTypes, setDocumentTypes] = React.useState<string[]>(["Invoice", "Contract", "Proposal", "Reports", "Others"])
   const [statuses, setStatuses] = React.useState<string[]>(["Approved", "Pending", "Rejected", "Draft"])
   const [owners, setOwners] = React.useState<string[]>(["Me", "Team", "Organization"])
   const [signatureStatuses, setSignatureStatuses] = React.useState<string[]>(["Signed", "Unsigned", "Pending Signature"])
@@ -145,7 +198,7 @@ export const SearchFilters = React.forwardRef<SearchFiltersRef, {
           const nextSignatureStatuses = normalizeOptions(optionsData.signatureStatuses)
           const nextDateRanges = normalizeOptions(optionsData.dateRanges)
 
-          if (nextDocumentTypes.length > 0) setDocumentTypes(nextDocumentTypes)
+          // if (nextDocumentTypes.length > 0) setDocumentTypes(nextDocumentTypes)
           if (nextStatuses.length > 0) setStatuses(nextStatuses)
           if (nextOwners.length > 0) setOwners(nextOwners)
           if (nextSignatureStatuses.length > 0) setSignatureStatuses(nextSignatureStatuses)
@@ -263,7 +316,7 @@ export const SearchFilters = React.forwardRef<SearchFiltersRef, {
           />
           <FilterField 
             label="Status" 
-            placeholder="All statuses" 
+            placeholder="" 
             options={statuses}
             value={status}
             onChange={setStatus}
@@ -275,16 +328,16 @@ export const SearchFilters = React.forwardRef<SearchFiltersRef, {
             value={dateRange}
             onChange={setDateRange}
           />
-          <FilterField 
+          <AutocompleteField 
             label="Tags" 
-            placeholder="Select tags" 
+            placeholder="Type tag name..." 
             options={tagOptions}
             value={tags}
             onChange={setTags}
           />
-          <FilterField 
+          <AutocompleteField 
             label="Owner" 
-            placeholder="Any owner" 
+            placeholder="Type owner name..." 
             options={owners}
             value={owner}
             onChange={setOwner}
@@ -315,13 +368,6 @@ export const SearchFilters = React.forwardRef<SearchFiltersRef, {
             className="h-10 px-4 text-slate-700 border-slate-200 bg-white hover:bg-slate-50"
           >
             Clear Filters
-          </Button>
-          
-          <Button 
-            variant="outline" 
-            className="h-10 px-4 text-slate-700 border-slate-200 bg-white hover:bg-slate-50"
-          >
-            Save Search
           </Button>
         </div>
       </CardContent>
