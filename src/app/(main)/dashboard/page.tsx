@@ -6,8 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuthStore } from "@/store/auth-store";
 import { formatRoleLabel, getDashboardVariant } from "@/lib/access-control";
-import { getUsers } from "@/lib/api-client";
-import { CheckCircle2, FileText, Bell, Server, ClipboardCheck, ShieldCheck } from "lucide-react";
+import { getUsers, fetchWithAuth } from "@/lib/api-client";
+import { CheckCircle2, FileText, Bell, Server, ClipboardCheck, ShieldCheck, AlertTriangle, Clock, ChevronRight } from "lucide-react";
 
 type StatCardProps = {
   title: string;
@@ -36,6 +36,8 @@ export default function DashboardPage() {
   const role = useAuthStore((state) => state.role);
   const variant = getDashboardVariant(role);
   const [userCount, setUserCount] = useState<number | null>(null);
+  const [loadingAlerts, setLoadingAlerts] = useState(true);
+  const [slaAlerts, setSlaAlerts] = useState<any[]>([]);
 
   useEffect(() => {
     const fetchUserCount = async () => {
@@ -51,6 +53,117 @@ export default function DashboardPage() {
     if (variant === "system-admin") {
       fetchUserCount();
     }
+  }, [variant]);
+
+  useEffect(() => {
+    const fetchSlaAlerts = async () => {
+      try {
+        setLoadingAlerts(true);
+        const [usersRes, workflowsRes, documentsRes, userMeRes] = await Promise.all([
+          fetchWithAuth("http://localhost:8081/api/users"),
+          fetchWithAuth("http://localhost:8081/api/workflows"),
+          fetchWithAuth("http://localhost:8081/api/documents?all=true"),
+          fetchWithAuth("http://localhost:8081/api/users/me")
+        ]);
+
+        if (!usersRes.ok || !workflowsRes.ok || !documentsRes.ok || !userMeRes.ok) {
+          return;
+        }
+
+        const users = await usersRes.json();
+        const workflows = await workflowsRes.json();
+        const documents = await documentsRes.json();
+        const currentUser = await userMeRes.json();
+
+        // Fetch tasks for each active workflow
+        const activeWorkflows = Array.isArray(workflows) 
+          ? workflows.filter((w: any) => w.status?.toUpperCase() === 'ACTIVE' || w.status?.toUpperCase() === 'PENDING_APPROVAL' || w.status?.toUpperCase() === 'PENDING')
+          : [];
+
+        const tasksNested = await Promise.all(
+          activeWorkflows.map(async (w: any) => {
+            try {
+              const res = await fetchWithAuth(`http://localhost:8081/api/tasks/instance/${w.id}`);
+              if (res.ok) {
+                const data = await res.json();
+                return { workflow: w, tasks: Array.isArray(data) ? data : [] };
+              }
+            } catch (err) {
+              console.error(err);
+            }
+            return { workflow: w, tasks: [] };
+          })
+        );
+
+        const alertsList: any[] = [];
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        for (const item of tasksNested) {
+          const w = item.workflow;
+          if (!w.dueDate) continue;
+
+          const dueDate = new Date(w.dueDate);
+          dueDate.setHours(0, 0, 0, 0);
+          
+          const timeDiff = dueDate.getTime() - today.getTime();
+          const daysDiff = Math.round(timeDiff / (1000 * 60 * 60 * 24));
+
+          // Trigger SLA alert if due date is within the window of 2 days before to 2 days after (overdue by <= 2 days)
+          if (daysDiff >= -2 && daysDiff <= 2) {
+            // Find active or pending tasks in this workflow
+            const activeTasks = item.tasks.filter((t: any) => t.status?.toUpperCase() === 'ACTIVE' || t.status?.toUpperCase() === 'PENDING');
+            
+            for (const task of activeTasks) {
+              const normalize = (value: string | null | undefined) => String(value ?? '').trim().toUpperCase();
+              
+              // Only include if assigned to the logged-in user (by user ID or role)
+              const isAssignedToMe = currentUser
+                ? String(task.userId) === String(currentUser.userId) ||
+                  normalize(task.userId) === normalize(currentUser.role)
+                : true;
+
+              if (!isAssignedToMe) continue;
+
+              // Find document
+              const docId = w.documentId ?? w.document_id ?? '';
+              const doc = documents.find((d: any) => String(d.document_id ?? d.id ?? '') === String(docId));
+              const docTitle = doc?.title ?? doc?.name ?? doc?.documentName ?? doc?.filename ?? 'Untitled Document';
+
+              // Find assigned by (who assigned the task)
+              const creatorId = w.createdByUserId || w.created_by_user_id;
+              let assignedBy = 'Unknown';
+              if (creatorId === 'TEMP_USER') {
+                assignedBy = 'TEMP_USER';
+              } else if (creatorId) {
+                const creator = users.find((u: any) => String(u.userId) === String(creatorId));
+                assignedBy = creator ? `${creator.username} (${creator.role})` : creatorId;
+              }
+
+              alertsList.push({
+                taskId: task.id,
+                documentId: docId,
+                documentTitle: docTitle,
+                assignedBy,
+                dueDate: w.dueDate,
+                daysDiff,
+                isOverdue: daysDiff < 0,
+                workflowName: w.workflowName,
+                priority: w.priority
+              });
+            }
+          }
+        }
+
+        setSlaAlerts(alertsList);
+      } catch (err) {
+        console.error("Failed to load SLA alerts:", err);
+      } finally {
+        setLoadingAlerts(false);
+      }
+    };
+
+    fetchSlaAlerts();
   }, [variant]);
 
   const title = useMemo(() => {
@@ -172,6 +285,73 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
           </>
+        )}
+
+        {/* SLA Monitoring Alerts */}
+        {!loadingAlerts && slaAlerts.length > 0 && (
+          <Card className="border-0 bg-white shadow-[0_10px_24px_rgba(15,23,42,0.08)] overflow-hidden">
+            <CardHeader className="bg-red-50 border-b border-red-100/60 py-4 px-6 flex flex-row items-center gap-3">
+              <div className="bg-red-100 p-2 rounded-lg text-red-600">
+                <AlertTriangle className="h-5 w-5 animate-bounce" />
+              </div>
+              <div>
+                <CardTitle className="text-base font-bold text-red-800">SLA Monitoring Alerts</CardTitle>
+                <p className="text-xs text-red-600/80 mt-0.5">Active approvals that are overdue or close to deadline</p>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0 divide-y divide-slate-100">
+              {slaAlerts.map((alert) => (
+                <div 
+                  key={alert.taskId} 
+                  className="flex flex-col sm:flex-row sm:items-center justify-between p-5 hover:bg-slate-50 transition-colors gap-4"
+                >
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-md ${
+                        alert.isOverdue 
+                          ? 'bg-red-100 text-red-700' 
+                          : 'bg-amber-100 text-amber-700'
+                      }`}>
+                        {alert.isOverdue ? 'Overdue Approval' : 'Upcoming Deadline'}
+                      </span>
+                      <span className="text-xs text-slate-400 font-medium">
+                        • {alert.workflowName}
+                      </span>
+                    </div>
+                    <h3 className="font-semibold text-slate-900 text-base">
+                      Document: <span className="text-[#953002]">{alert.documentTitle}</span>
+                    </h3>
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-600">
+                      <p>Assigned by: <span className="font-medium text-slate-800">{alert.assignedBy}</span></p>
+                      <p>Due: <span className="font-medium text-slate-800">{new Date(alert.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span></p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-4">
+                    <div className="text-right">
+                      <p className={`text-sm font-bold ${alert.isOverdue ? 'text-red-600' : 'text-amber-600'}`}>
+                        {alert.isOverdue 
+                          ? `Overdue by: ${Math.abs(alert.daysDiff)} days` 
+                          : alert.daysDiff === 0 
+                            ? 'Due today' 
+                            : `Due in: ${alert.daysDiff} days`
+                        }
+                      </p>
+                      <p className="text-xs text-slate-400 mt-0.5">SLA limit exceeded</p>
+                    </div>
+                    <Button 
+                      size="sm" 
+                      variant="ghost" 
+                      className="text-slate-400 hover:text-[#953002] hover:bg-slate-100"
+                      onClick={() => router.push(`/documents/${alert.documentId}?taskId=${alert.taskId}`)}
+                    >
+                      <ChevronRight className="h-5 w-5" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
         )}
       </div>
     </div>

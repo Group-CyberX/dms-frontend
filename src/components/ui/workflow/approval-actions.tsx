@@ -9,12 +9,14 @@ type Props = {
   taskId: number;
   documentName: string;
   onApprovalComplete?: () => void;
+  statusMessage?: string | null;
 };
 
 export default function ApprovalActions({
   taskId,
   documentName,
   onApprovalComplete,
+  statusMessage,
 }: Props) {
   const [comment, setComment] = useState('');
   const [loading, setLoading] = useState(false);
@@ -44,7 +46,7 @@ export default function ApprovalActions({
 
       setSuccess('Task approved successfully!');
       setComment('');
-      
+
       // Call callback after a short delay to show success message
       setTimeout(() => {
         onApprovalComplete?.();
@@ -79,7 +81,7 @@ export default function ApprovalActions({
 
       setSuccess('Task rejected successfully!');
       setComment('');
-      
+
       // Call callback after a short delay to show success message
       setTimeout(() => {
         onApprovalComplete?.();
@@ -117,37 +119,48 @@ export default function ApprovalActions({
         </div>
       )}
 
-      {/* Comments Section */}
-      <div className="mb-4">
-        <label className="block text-sm font-medium text-gray-700 mb-2">Comments</label>
-        <textarea
-          value={comment}
-          onChange={(e) => setComment(e.target.value)}
-          placeholder="Add your comments here..."
-          rows={4}
-          disabled={loading}
-          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 outline-none transition placeholder:text-gray-500 focus:border-gray-400 focus:ring-1 focus:ring-gray-400 disabled:bg-gray-50 disabled:text-gray-500"
-        />
-        
-      </div>
+      {statusMessage ? (
+        <div className={`rounded-lg p-4 flex items-center justify-center gap-2 text-sm font-semibold border ${
+          statusMessage === 'Waiting for previous step' || statusMessage === 'Task approved'
+            ? 'bg-green-50 border-green-200 text-green-700'
+            : 'bg-red-50 border-red-200 text-red-700'
+        }`}>
+          <span>{statusMessage}</span>
+        </div>
+      ) : (
+        <>
+          {/* Comments Section */}
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">Comments</label>
+            <textarea
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              placeholder="Add your comments here..."
+              rows={4}
+              disabled={loading}
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 outline-none transition placeholder:text-gray-500 focus:border-gray-400 focus:ring-1 focus:ring-gray-400 disabled:bg-gray-50 disabled:text-gray-500"
+            />
+          </div>
 
-      {/* Action Buttons */}
-      <div className="flex gap-3">
-        <Button
-          onClick={handleApprove}
-          disabled={loading}
-          className="flex-1 bg-[#a34713] hover:bg-[#8e3d10] text-white font-medium"
-        >
-          {loading ? 'Processing...' : 'Approve'}
-        </Button>
-        <Button
-          onClick={handleReject}
-          disabled={loading}
-          className="flex-1 bg-[#dc1f45] hover:bg-[#c5183b] text-white font-medium"
-        >
-          {loading ? 'Processing...' : 'Reject'}
-        </Button>
-      </div>
+          {/* Action Buttons */}
+          <div className="flex gap-3">
+            <Button
+              onClick={handleApprove}
+              disabled={loading}
+              className="flex-1 bg-[#a34713] hover:bg-[#8e3d10] text-white font-medium"
+            >
+              {loading ? 'Processing...' : 'Approve'}
+            </Button>
+            <Button
+              onClick={handleReject}
+              disabled={loading}
+              className="flex-1 bg-[#dc1f45] hover:bg-[#c5183b] text-white font-medium"
+            >
+              {loading ? 'Processing...' : 'Reject'}
+            </Button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
