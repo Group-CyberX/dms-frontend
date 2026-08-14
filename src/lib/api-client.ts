@@ -187,6 +187,81 @@ export interface Folder {
   path: string;
 }
 
+export interface FolderTreeNode {
+  folder_id: string;
+  name: string;
+  path: string;
+  parent_folder_id: string | null;
+  documentCount: number;
+  totalSize: number;
+  children: FolderTreeNode[];
+}
+
+/**
+ * Fetch the full nested folder tree for the current user
+ */
+export async function fetchFolderTree(): Promise<FolderTreeNode[]> {
+  const response = await fetchWithAuth(`${API_BASE_URL}/folders/tree`, {
+    headers: getAuthHeader(),
+  });
+
+  if (!response.ok) {
+    let errBody: unknown;
+    try { errBody = await response.json(); } catch { errBody = response.statusText; }
+    throw errBody || response.statusText;
+  }
+
+  return response.json();
+}
+
+/**
+ * Move one or more documents to a target folder (or to root if targetFolderId is null)
+ */
+export async function moveDocuments(req: {
+  documentIds: string[];
+  targetFolderId: string | null;
+}): Promise<{ movedCount: number }> {
+  const response = await fetchWithAuth(`${API_BASE_URL}/documents/move`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeader(),
+    },
+    body: JSON.stringify(req),
+  });
+
+  if (!response.ok) {
+    let errBody: unknown;
+    try { errBody = await response.json(); } catch { errBody = response.statusText; }
+    throw errBody || response.statusText;
+  }
+
+  return response.json();
+}
+
+/**
+ * Fetch documents, optionally scoped to a specific folder.
+ * Pass folderId=null to get all non-deleted documents.
+ */
+export async function fetchDocuments(folderId?: string | null): Promise<Document[]> {
+  const url =
+    folderId != null
+      ? `${API_BASE_URL}/documents?folderId=${encodeURIComponent(folderId)}`
+      : `${API_BASE_URL}/documents`;
+
+  const response = await fetchWithAuth(url, {
+    headers: getAuthHeader(),
+  });
+
+  if (!response.ok) {
+    let errBody: unknown;
+    try { errBody = await response.json(); } catch { errBody = response.statusText; }
+    throw errBody || response.statusText;
+  }
+
+  return response.json();
+}
+
 /**
  * Upload a document with metadata and progress tracking
  */
@@ -195,6 +270,11 @@ export async function uploadDocument(
   onProgress?: (progress: { loaded: number; total: number; percentage: number }) => void
 ): Promise<DocumentUploadResponse> {
   return new Promise((resolve, reject) => {
+    console.log('[SINGLE_UPLOAD] Starting single-file upload...');
+    console.log('[SINGLE_UPLOAD] File:', params.file.name);
+    console.log('[SINGLE_UPLOAD] Size:', params.file.size, 'bytes');
+    console.log('[SINGLE_UPLOAD] Title:', params.title);
+    
     const xhr = new XMLHttpRequest();
     const formData = new FormData();
     formData.append('file', params.file, makeSafeFilename(params.file));
@@ -205,10 +285,16 @@ export async function uploadDocument(
     if (params.tags) formData.append('tags', params.tags);
     if (params.description) formData.append('description', params.description);
 
-    // Track upload progress (KB by KB)
+    let uploadComplete = false;
+
+    // Track upload progress (KB by KB) - cap at 95% to reserve 5% for backend processing
     xhr.upload.onprogress = (event) => {
-      if (event.lengthComputable && onProgress) {
-        const percentage = (event.loaded / event.total) * 100;
+      if (event.lengthComputable && onProgress && !uploadComplete) {
+        // Cap progress at 95% during upload - reserve 5% for server-side processing
+        let percentage = (event.loaded / event.total) * 100;
+        if (percentage > 95) percentage = 95;
+        
+        console.log(`[SINGLE_UPLOAD] Upload progress: ${(event.loaded / 1024 / 1024).toFixed(2)}MB / ${(event.total / 1024 / 1024).toFixed(2)}MB = ${percentage.toFixed(1)}%`);
         onProgress({
           loaded: event.loaded,
           total: event.total,
@@ -218,27 +304,56 @@ export async function uploadDocument(
     };
 
     xhr.onload = () => {
+      uploadComplete = true;
+      console.log('[SINGLE_UPLOAD] Response received from server, processing backend validation...');
+      
+      // Show 98% while waiting for full response parsing
+      if (onProgress) {
+        onProgress({
+          loaded: params.file.size,
+          total: params.file.size,
+          percentage: 98,
+        });
+      }
+
       if (xhr.status >= 200 && xhr.status < 300) {
         try {
           const response = JSON.parse(xhr.responseText);
+          console.log('[SINGLE_UPLOAD] Upload completed successfully');
+          console.log('[SINGLE_UPLOAD] Response:', response);
+          
+          // Show 100% only after successful response parsing
+          if (onProgress) {
+            onProgress({
+              loaded: params.file.size,
+              total: params.file.size,
+              percentage: 100,
+            });
+          }
+          
           resolve(response);
         } catch (error) {
+          console.error('[SINGLE_UPLOAD] Error parsing response:', error);
           reject(new Error('Failed to parse response'));
         }
       } else {
         try {
           const errorData = JSON.parse(xhr.responseText);
+          console.error('[SINGLE_UPLOAD] Upload failed:', errorData.message);
           reject(new Error(errorData.message || `Upload failed with status ${xhr.status}`));
         } catch {
+          console.error('[SINGLE_UPLOAD] Upload failed with status:', xhr.status);
           reject(new Error(`Upload failed with status ${xhr.status}`));
         }
       }
     };
 
     xhr.onerror = () => {
+      console.error('[SINGLE_UPLOAD] Network error during upload');
       reject(new Error('Upload failed - network error'));
     };
 
+    console.log('[SINGLE_UPLOAD] Sending request...');
     xhr.open('POST', `${API_BASE_URL}/documents/upload`);
     const authHeader = getAuthHeader().Authorization;
     if (authHeader) xhr.setRequestHeader('Authorization', authHeader);
@@ -400,13 +515,16 @@ export async function addTagToDocument(documentId: string, tagName: string): Pro
 }
 
 /**
- * Create a new folder
+ * Create a new folder. `path` is computed server-side from the parent's
+ * path, so it is not sent — the DTO the backend accepts here only has
+ * `name` and `parentFolderId` (camelCase, unlike the Folders entity used
+ * by update/delete, which is snake_case). Omit parentFolderId to create
+ * a root folder.
  */
-export async function createFolder(name: string, parentFolderId?: string, path?: string): Promise<Folder> {
+export async function createFolder(name: string, parentFolderId?: string): Promise<Folder> {
   const folderData = {
     name,
-    parent_folder_id: parentFolderId || null,
-    path: path || `/${name}`,
+    parentFolderId: parentFolderId || null,
   };
 
   const response = await fetch(`${API_BASE_URL}/folders`, {
@@ -469,7 +587,16 @@ export async function updateFolder(folderId: string, name: string, parentFolderI
 /**
  * Delete a folder
  */
-export async function deleteFolder(folderId: string): Promise<void> {
+export interface FolderDeleteResult {
+  deletedFolderIds: string[];
+  documentsMovedToRecycleBin: number;
+}
+
+/**
+ * Delete a folder. This cascades: every subfolder is deleted too, and every
+ * document inside any of them is moved to the recycle bin (soft delete).
+ */
+export async function deleteFolder(folderId: string): Promise<FolderDeleteResult> {
   const response = await fetch(`${API_BASE_URL}/folders/${folderId}`, {
     method: 'DELETE',
     headers: getAuthHeader(),
@@ -478,29 +605,145 @@ export async function deleteFolder(folderId: string): Promise<void> {
   if (!response.ok) {
     throw new Error(`Failed to delete folder: ${response.statusText}`);
   }
+
+  return response.json();
 }
 
-/**
- * Upload new document version
- */
-export async function uploadNewVersion(documentId: string, file: File): Promise<DocumentVersion> {
-  const formData = new FormData();
-  formData.append('file', file, makeSafeFilename(file));
+export interface FolderTrashItem {
+  folderId: string;
+  name: string;
+  path: string;
+  deletedAt: string;
+  documentCount: number;
+  subfolderCount: number;
+}
 
-  const response = await fetch(`${API_BASE_URL}/documents/${documentId}/versions/upload`, {
-    method: 'POST',
-    body: formData,
+export interface FolderRestoreResult {
+  restoredFolderIds: string[];
+  documentsRestored: number;
+}
+
+/** List deleted folders (recycle bin), one row per deleted subtree root. */
+export async function getDeletedFolders(): Promise<FolderTrashItem[]> {
+  const response = await fetch(`${API_BASE_URL}/folders/trash`, {
     headers: getAuthHeader(),
   });
 
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(
-      errorData.message || `Upload failed with status ${response.status}`
-    );
+    throw new Error(`Failed to fetch deleted folders: ${response.statusText}`);
   }
 
   return response.json();
+}
+
+/**
+ * Restore a deleted folder. This cascades: every subfolder is restored too,
+ * along with every document that was moved to the recycle bin alongside it.
+ */
+export async function restoreFolder(folderId: string): Promise<FolderRestoreResult> {
+  const response = await fetch(`${API_BASE_URL}/folders/${folderId}/restore`, {
+    method: 'POST',
+    headers: getAuthHeader(),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to restore folder: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Upload new document version with progress tracking
+ */
+export async function uploadNewVersion(
+  documentId: string,
+  file: File,
+  onProgress?: (progress: { loaded: number; total: number; percentage: number }) => void
+): Promise<DocumentVersion> {
+  return new Promise((resolve, reject) => {
+    console.log('[VERSION_UPLOAD] Starting version upload...');
+    console.log('[VERSION_UPLOAD] File:', file.name);
+    console.log('[VERSION_UPLOAD] Size:', file.size, 'bytes');
+    
+    const xhr = new XMLHttpRequest();
+    const formData = new FormData();
+    formData.append('file', file, makeSafeFilename(file));
+
+    let uploadComplete = false;
+
+    // Track upload progress - cap at 95% to reserve 5% for backend processing
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable && onProgress && !uploadComplete) {
+        // Cap progress at 95% during upload - reserve 5% for server
+        let percentage = (event.loaded / event.total) * 100;
+        if (percentage > 95) percentage = 95;
+        
+        console.log(`[VERSION_UPLOAD] Upload progress: ${(event.loaded / 1024 / 1024).toFixed(2)}MB / ${(event.total / 1024 / 1024).toFixed(2)}MB = ${percentage.toFixed(1)}%`);
+        onProgress({
+          loaded: event.loaded,
+          total: event.total,
+          percentage,
+        });
+      }
+    };
+
+    xhr.onload = () => {
+      uploadComplete = true;
+      console.log('[VERSION_UPLOAD] Response received from server, processing backend...');
+      
+      // Show 98% while waiting for response parsing
+      if (onProgress) {
+        onProgress({
+          loaded: file.size,
+          total: file.size,
+          percentage: 98,
+        });
+      }
+
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const response = JSON.parse(xhr.responseText);
+          console.log('[VERSION_UPLOAD] Version upload completed successfully');
+          console.log('[VERSION_UPLOAD] Response:', response);
+          
+          // Show 100% only after successful response parsing
+          if (onProgress) {
+            onProgress({
+              loaded: file.size,
+              total: file.size,
+              percentage: 100,
+            });
+          }
+          
+          resolve(response);
+        } catch (error) {
+          console.error('[VERSION_UPLOAD] Error parsing response:', error);
+          reject(new Error('Failed to parse response'));
+        }
+      } else {
+        try {
+          const errorData = JSON.parse(xhr.responseText);
+          console.error('[VERSION_UPLOAD] Upload failed:', errorData.message);
+          reject(new Error(errorData.message || `Upload failed with status ${xhr.status}`));
+        } catch {
+          console.error('[VERSION_UPLOAD] Upload failed with status:', xhr.status);
+          reject(new Error(`Upload failed with status ${xhr.status}`));
+        }
+      }
+    };
+
+    xhr.onerror = () => {
+      console.error('[VERSION_UPLOAD] Network error during upload');
+      reject(new Error('Upload failed - network error'));
+    };
+
+    console.log('[VERSION_UPLOAD] Sending request...');
+    xhr.open('POST', `${API_BASE_URL}/documents/${documentId}/versions/upload`);
+    const authHeader = getAuthHeader().Authorization;
+    if (authHeader) xhr.setRequestHeader('Authorization', authHeader);
+    xhr.send(formData);
+  });
 }
 
 /**
@@ -637,17 +880,27 @@ export async function permanentlyDeleteMultipleDocuments(documentIds: string[]):
 // ============= MULTIPART UPLOAD FUNCTIONS =============
 
 /**
- * Initiate multipart upload session
+ * Initiate multipart upload session with metadata validation
  */
 export async function initiateMultipartUpload(
   fileName: string,
   totalSize: number,
-  documentId?: string
+  title: string,
+  category: string,
+  tags?: string,
+  description?: string,
+  documentId?: string,
+  folderId?: string
 ): Promise<{ sessionId: string; s3UploadId: string; partSize: number }> {
   const params = new URLSearchParams({
     fileName,
     totalSize: totalSize.toString(),
+    title,
+    category,
+    ...(tags && { tags }),
+    ...(description && { description }),
     ...(documentId && { documentId }),
+    ...(folderId && { folderId }),
   });
 
   const response = await fetch(`${API_BASE_URL}/multipart-uploads/initiate?${params}`, {
@@ -656,7 +909,8 @@ export async function initiateMultipartUpload(
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to initiate multipart upload: ${response.statusText}`);
+    const errorText = await response.text();
+    throw new Error(`Validation failed: ${errorText}`);
   }
 
   return response.json();
@@ -728,7 +982,8 @@ export async function completeMultipartUpload(
 }
 
 /**
- * Get upload progress
+ * Get upload progress with S3 verification
+ * Returns actual bytes uploaded to S3 (source of truth)
  */
 export async function getUploadProgress(
   sessionId: string
@@ -997,3 +1252,138 @@ export const apiClient = {
     return res.json();
   },
 };
+export interface SearchHistoryItem {
+  searchId: string;
+  query: string;
+  documentId: string;
+  documentTitle: string;
+  timestamp: string;
+}
+
+/**
+ * Get search history for the current user
+ */
+export async function getSearchHistory(): Promise<SearchHistoryItem[]> {
+  const response = await fetch(`${API_BASE_URL}/search/history`, {
+    headers: getAuthHeader(),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch search history: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Clear search history for the current user
+ */
+export async function clearSearchHistory(): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/search/history`, {
+    method: 'DELETE',
+    headers: getAuthHeader(),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to clear search history: ${response.statusText}`);
+  }
+}
+
+/**
+ * Log a clicked search result to history
+ */
+export async function logSearchClick(query: string, documentId: string): Promise<void> {
+  const response = await fetchWithAuth(`${API_BASE_URL}/search/log`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      query,
+      clickedDocId: documentId,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to log search click: ${response.statusText}`);
+  }
+}
+
+export interface ProcessingJob {
+  jobId: string;
+  documentVersionId: string;
+  jobType: string;
+  status: string; // "PENDING", "IN_PROGRESS", "SUCCESS", "FAILED"
+  createdAt?: string;
+}
+
+/**
+ * Fetch jobs for a document
+ */
+export async function getDocumentJobs(documentId: string): Promise<ProcessingJob[]> {
+  const response = await fetchWithAuth(`${API_BASE_URL}/jobs?documentId=${documentId}`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch processing jobs');
+  }
+  return response.json();
+}
+
+export interface DocumentMetadata {
+  metadataId: string;
+  documentId: string;
+  key: string;
+  value: string;
+}
+
+/**
+ * Get all metadata for a document
+ */
+export async function getDocumentMetadata(documentId: string): Promise<DocumentMetadata[]> {
+  const response = await fetchWithAuth(`${API_BASE_URL}/metadata/document/${documentId}`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch metadata: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+/**
+ * Add metadata to a document
+ */
+export async function addMetadata(documentId: string, key: string, value: string): Promise<DocumentMetadata> {
+  const response = await fetchWithAuth(`${API_BASE_URL}/metadata/document/${documentId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ key, value }),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to add metadata: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+/**
+ * Update metadata for a document
+ */
+export async function updateMetadata(documentId: string, key: string, value: string): Promise<DocumentMetadata> {
+  const response = await fetchWithAuth(`${API_BASE_URL}/metadata/document/${documentId}/${encodeURIComponent(key)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ key, value }),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to update metadata: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+/**
+ * Delete metadata from a document
+ */
+export async function deleteMetadata(documentId: string, key: string): Promise<void> {
+  const response = await fetchWithAuth(`${API_BASE_URL}/metadata/document/${documentId}/${encodeURIComponent(key)}`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to delete metadata: ${response.statusText}`);
+  }
+}

@@ -4,14 +4,17 @@ import { useEffect } from "react";
 import { useParams } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Download, FileText } from "lucide-react";
+import { Download, FileText, Loader2 } from "lucide-react";
 import { useAuthStore } from "@/store/auth-store";
+import { fetchWithAuth } from "@/lib/api-client";
+import { DocumentPreview } from "@/components/ui/DocumentPreview";
 
 type ShareAccessResponse = {
   documentId: string;
   allowDownload: boolean;
   allowComments: boolean;
   documentName?: string;
+  fileName?: string;
 };
 
 type ShareComment = {
@@ -26,7 +29,6 @@ export default function SharePage() {
   const params = useParams();
   // Token from URL used to access shared document
   const shareToken = params.token as string;
-  const accessToken = useAuthStore((state) => state.accessToken);
 
   const [password, setPassword] = useState("");
   const [data, setData] = useState<ShareAccessResponse | null>(null);
@@ -39,18 +41,58 @@ export default function SharePage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
 
-  const getJwt = () =>
-    accessToken || (typeof window !== "undefined" ? localStorage.getItem("accessToken") : null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewType, setPreviewType] = useState<'image' | 'pdf' | 'docx' | 'xlsx' | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(true);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+
+  const getDocumentType = (fileName: string): 'image' | 'pdf' | 'docx' | 'xlsx' | null => {
+    const ext = fileName.split('.').pop()?.toLowerCase();
+    if (['png', 'jpg', 'jpeg'].includes(ext || '')) return 'image';
+    if (ext === 'pdf') return 'pdf';
+    if (ext === 'docx') return 'docx';
+    if (ext === 'xlsx') return 'xlsx';
+    return null;
+  };
+
+  const loadPreview = async (fileName: string) => {
+    try {
+      setPreviewLoading(true);
+      setPreviewError(null);
+      const res = await fetchWithAuth(
+        `${API}/api/share-links/${shareToken}/preview?password=${password}`,
+        {
+          method: "GET",
+        }
+      );
+
+      if (!res.ok) {
+        const text = await res.text();
+        setPreviewError(text || "Failed to load preview");
+        return;
+      }
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      setPreviewUrl(url);
+
+      const type = getDocumentType(fileName);
+      setPreviewType(type);
+    } catch (err) {
+      console.error("Error loading preview:", err);
+      setPreviewError("Error loading preview");
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
 
   const handleAccess = async (value: string = password) => {
     setCheckingAccess(true);
-    const jwt = getJwt();
 
-    const res = await fetch(`${API}/api/share-links/${shareToken}/access`, {
+    const res = await fetchWithAuth(`${API}/api/share-links/${shareToken}/access`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...(jwt && { Authorization: `Bearer ${jwt}` }),
       },
       body: JSON.stringify({ password: value }),
     });
@@ -73,6 +115,12 @@ export default function SharePage() {
     setCheckingAccess(false);
 
     if (d.allowComments) loadComments();
+
+    if (d.fileName) {
+      loadPreview(d.fileName);
+    } else {
+      setPreviewLoading(false);
+    }
   };
 
   // Reset state when share token changes
@@ -82,17 +130,19 @@ export default function SharePage() {
     setComments([]);
     setNeedsPassword(false);
     setCheckingAccess(true);
+    setPreviewUrl(prev => {
+      if (prev) window.URL.revokeObjectURL(prev);
+      return null;
+    });
+    setPreviewType(null);
+    setPreviewError(null);
+    setPreviewLoading(true);
     handleAccess("");
   }, [shareToken]);
 
   // Fetch all comments for this shared document
   const loadComments = async () => {
-    const jwt = getJwt();
-    const res = await fetch(`${API}/api/comments/${shareToken}`, {
-      headers: {
-        ...(jwt && { Authorization: `Bearer ${jwt}` }),
-      },
-    });
+    const res = await fetchWithAuth(`${API}/api/comments/${shareToken}`);
 
     if (!res.ok) {
       if (res.status === 401 || res.status === 403) {
@@ -114,15 +164,11 @@ export default function SharePage() {
 
     try {
       setDownloading(true);
-      const jwt = getJwt();
 
-      const res = await fetch(
+      const res = await fetchWithAuth(
         `${API}/api/share-links/${shareToken}/download?password=${password}`,
         {
           method: "GET",
-          headers: {
-            ...(jwt && { Authorization: `Bearer ${jwt}` }),
-          },
         }
       );
 
@@ -153,12 +199,10 @@ export default function SharePage() {
       return;
     }
 
-    const jwt = getJwt();
-    const res = await fetch(`${API}/api/comments/${shareToken}`, {
+    const res = await fetchWithAuth(`${API}/api/comments/${shareToken}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...(jwt && { Authorization: `Bearer ${jwt}` }),
       },
       body: JSON.stringify({ content: comment }),
     });
@@ -176,12 +220,10 @@ export default function SharePage() {
 
   // Edit an existing comment by its ID
   const editComment = async (id: string, content: string) => {
-    const jwt = getJwt();
-    const res = await fetch(`${API}/api/comments/${id}`, {
+    const res = await fetchWithAuth(`${API}/api/comments/${id}`, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
-        ...(jwt && { Authorization: `Bearer ${jwt}` }),
       },
       body: JSON.stringify({ content }),
     });
@@ -196,12 +238,8 @@ export default function SharePage() {
 
   // Delete a comment by its ID after user confirmation
   const deleteComment = async (id: string) => {
-    const jwt = getJwt();
-    const res = await fetch(`${API}/api/comments/${id}`, {
+    const res = await fetchWithAuth(`${API}/api/comments/${id}`, {
       method: "DELETE",
-      headers: {
-        ...(jwt && { Authorization: `Bearer ${jwt}` }),
-      },
     });
 
     if (!res.ok) {
@@ -283,12 +321,21 @@ export default function SharePage() {
       <div className="max-w-5xl mx-auto px-8 py-8">
 
         {/* Document Preview */}
-        <div className="bg-gray-50 rounded-lg p-12 mb-8 border border-gray-200 flex items-center justify-center min-h-96">
-          <div className="text-center">
-            <FileText className="w-20 h-20 text-gray-300 mx-auto mb-4" />
-            <p className="text-gray-600 font-medium">PDF Document Preview</p>
-            <p className="text-sm text-gray-500">Document viewer integration here</p>
-          </div>
+        <div className="bg-white rounded-lg shadow-sm p-8 mb-8 border border-gray-200">
+          {previewLoading ? (
+            <div className="flex items-center justify-center h-96">
+              <div className="flex flex-col items-center">
+                <Loader2 className="w-8 h-8 text-[#953002] animate-spin" />
+                <p className="text-gray-600 mt-3 text-sm">Loading preview...</p>
+              </div>
+            </div>
+          ) : previewError ? (
+            <div className="flex flex-col items-center justify-center h-96 bg-gray-50 rounded-lg border border-red-200 p-6">
+              <p className="text-red-600 font-medium">{previewError}</p>
+            </div>
+          ) : (
+            <DocumentPreview url={previewUrl} type={previewType} title={documentName} />
+          )}
         </div>
 
         {/* Show comments section only if allowed by share settings */}
@@ -318,52 +365,81 @@ export default function SharePage() {
               {comments.length === 0 ? (
                 <p className="text-gray-500 text-center py-8">No comments yet</p>
               ) : (
-                comments.map((c) => (
-                  <div key={c.id} className="bg-gray-50 border border-gray-200 p-4 rounded-md">
-                    <p className="text-gray-700">{c.content}</p>
-
-                    {c.createdAt && <p className="text-xs text-gray-500 mt-2">{new Date(c.createdAt).toLocaleString()}</p>}
-
-                    {/* ACTION BUTTONS */}
-                    <div className="flex gap-2 mt-3">
-                      <button
-                        onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
-                          e.preventDefault();
-                          setEditingId(c.id);
-                          setEditText(c.content);
-                        }}
-                        className="text-blue-600 text-sm"
-                      >
-                        Edit
-                      </button>
-
-                      {editingId === c.id && (
-                        <div className="mt-2">
-                          <input value={editText} onChange={(e) => setEditText(e.target.value)} className="border px-2 py-1 rounded w-full" />
-                          <button
-                            onClick={() => {
-                              editComment(c.id, editText);
-                              setEditingId(null);
-                            }}
-                            className="text-green-600 text-sm mt-1"
-                          >
-                            Save
-                          </button>
+                comments.map((c) => {
+                  const isEditing = editingId === c.id;
+                  return (
+                    <div key={c.id} className="bg-gray-50 border border-gray-200 p-4 rounded-md shadow-xs">
+                      {isEditing ? (
+                        <div className="space-y-3">
+                          <textarea
+                            value={editText}
+                            onChange={(e) => setEditText(e.target.value)}
+                            className="w-full border border-gray-300 p-2.5 rounded-md focus:ring-2 focus:ring-[#953002] focus:border-transparent text-sm resize-none bg-white"
+                            rows={3}
+                          />
+                          <div className="flex gap-2 justify-end">
+                            <Button
+                              onClick={() => setEditingId(null)}
+                              variant="outline"
+                              size="sm"
+                              className="h-8 text-gray-700 border-gray-300 hover:bg-gray-100"
+                            >
+                              Cancel
+                            </Button>
+                            <Button
+                              onClick={() => {
+                                if (!editText.trim()) {
+                                  alert("Comment cannot be empty");
+                                  return;
+                                }
+                                editComment(c.id, editText);
+                                setEditingId(null);
+                              }}
+                              size="sm"
+                              className="h-8 bg-[#953002] hover:bg-[#7a2600] text-white"
+                            >
+                              Save
+                            </Button>
+                          </div>
                         </div>
+                      ) : (
+                        <>
+                          <p className="text-gray-700 text-sm whitespace-pre-wrap">{c.content}</p>
+                          
+                          <div className="flex items-center justify-between mt-3 pt-2 border-t border-gray-100/60">
+                            {c.createdAt && (
+                              <p className="text-xs text-gray-400">
+                                {new Date(c.createdAt).toLocaleString()}
+                              </p>
+                            )}
+                            
+                            <div className="flex gap-3">
+                              <button
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  setEditingId(c.id);
+                                  setEditText(c.content);
+                                }}
+                                className="text-gray-500 hover:text-[#953002] text-xs font-medium transition-colors"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => {
+                                  const confirmDelete = confirm("Are you sure you want to delete this comment?");
+                                  if (confirmDelete) deleteComment(c.id);
+                                }}
+                                className="text-gray-500 hover:text-red-600 text-xs font-medium transition-colors"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+                        </>
                       )}
-
-                      <button
-                        onClick={() => {
-                          const confirmDelete = confirm("Are you sure you want to delete?");
-                          if (confirmDelete) deleteComment(c.id);
-                        }}
-                        className="text-red-600 text-sm"
-                      >
-                        Delete
-                      </button>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
