@@ -3,20 +3,24 @@
 import { useState, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { 
-  Trash2, 
-  RotateCcw, 
+import {
+  Trash2,
+  RotateCcw,
   Loader,
   FileText,
-  AlertCircle
+  AlertCircle,
+  Folder as FolderIcon
 } from 'lucide-react';
-import { 
-  getDeletedDocuments, 
-  Document, 
+import {
+  getDeletedDocuments,
+  Document,
   restoreDocument,
   permanentlyDeleteDocument,
   restoreMultipleDocuments,
-  permanentlyDeleteMultipleDocuments
+  permanentlyDeleteMultipleDocuments,
+  getDeletedFolders,
+  restoreFolder,
+  FolderTrashItem,
 } from '@/lib/api-client';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/auth-store';
@@ -32,6 +36,9 @@ export default function RecycleBinPage() {
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
 
+  const [deletedFolders, setDeletedFolders] = useState<FolderTrashItem[]>([]);
+  const [foldersLoading, setFoldersLoading] = useState(true);
+
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (!token) {
@@ -40,6 +47,7 @@ export default function RecycleBinPage() {
     }
 
     fetchDeletedDocuments();
+    fetchDeletedFolders();
   }, [router]);
 
   useEffect(() => {
@@ -69,6 +77,19 @@ export default function RecycleBinPage() {
       setDeletedDocuments([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchDeletedFolders = async () => {
+    try {
+      setFoldersLoading(true);
+      const data = await getDeletedFolders();
+      setDeletedFolders(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('Failed to fetch deleted folders:', err);
+      setDeletedFolders([]);
+    } finally {
+      setFoldersLoading(false);
     }
   };
 
@@ -193,6 +214,30 @@ export default function RecycleBinPage() {
     }
   };
 
+  const handleRestoreFolder = async (folderId: string, folderName: string) => {
+    const confirmed = window.confirm(`Restore "${folderName}" and everything inside it?`);
+    if (!confirmed) return;
+
+    try {
+      setActionLoading(true);
+      setError(null);
+      await restoreFolder(folderId);
+
+      // Remove restored folder from the trash list
+      setDeletedFolders(prevFolders =>
+        prevFolders.filter(f => f.folderId !== folderId)
+      );
+      // Documents that came back with it are no longer deleted, so drop them here too
+      await fetchDeletedDocuments();
+    } catch (err) {
+      console.error('Failed to restore folder:', err);
+      setError('Failed to restore folder. Please try again.');
+      await fetchDeletedFolders();
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const handleRestoreOne = async (documentId: string, documentTitle: string) => {
     const confirmed = window.confirm(`Restore "${documentTitle}"?`);
     if (!confirmed) return;
@@ -274,7 +319,22 @@ export default function RecycleBinPage() {
         <div className="space-y-6">
           {/* Stat Cards */}
           {!loading && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              {/* Deleted Folders Card */}
+              <div className="bg-white rounded-lg shadow-sm p-6">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-gray-600 text-sm font-medium">Deleted Folders</p>
+                    <p className="text-3xl font-bold text-gray-900 mt-2">
+                      {deletedFolders.length}
+                    </p>
+                  </div>
+                  <div className="flex-shrink-0">
+                    <FolderIcon className="w-8 h-8 text-amber-500" />
+                  </div>
+                </div>
+              </div>
+
               {/* Deleted Items Card */}
               <div className="bg-white rounded-lg shadow-sm p-6">
                 <div className="flex items-start justify-between">
@@ -321,6 +381,91 @@ export default function RecycleBinPage() {
               </div>
             </div>
           )}
+
+          {/* Deleted Folders Section */}
+          <div className="bg-white rounded-lg shadow-sm p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Deleted Folders</h2>
+
+            {foldersLoading ? (
+              <div className="flex flex-col items-center justify-center py-8">
+                <Loader className="w-6 h-6 text-[#953002] animate-spin mb-2" />
+                <p className="text-gray-500 text-sm">Loading deleted folders...</p>
+              </div>
+            ) : deletedFolders.length === 0 ? (
+              <div className="text-center py-8">
+                <FolderIcon className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                <p className="text-gray-500 text-sm">No deleted folders</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="border-b border-gray-200 bg-gray-50">
+                    <tr>
+                      <th className="text-left py-3 px-4 font-semibold text-gray-900">Folder</th>
+                      <th className="text-left py-3 px-4 font-semibold text-gray-900">Contents</th>
+                      <th className="text-left py-3 px-4 font-semibold text-gray-900">Deleted Date</th>
+                      <th className="text-left py-3 px-4 font-semibold text-gray-900">Days Remaining</th>
+                      <th className="text-left py-3 px-4 font-semibold text-gray-900">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {deletedFolders.map((folder) => {
+                      const daysRemaining = calculateDaysRemaining(folder.deletedAt);
+                      const expiringSoon = isExpiringSoon(folder.deletedAt);
+
+                      return (
+                        <tr
+                          key={folder.folderId}
+                          className="border-b border-gray-100 hover:bg-gray-50 transition-colors"
+                        >
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-2">
+                              <div className="w-8 h-8 rounded bg-amber-50 flex items-center justify-center flex-shrink-0">
+                                <FolderIcon className="w-5 h-5 text-amber-500" />
+                              </div>
+                              <div>
+                                <p className="font-medium text-gray-900">{folder.name}</p>
+                                <p className="text-xs text-gray-500">{folder.path}</p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="py-3 px-4">
+                            <p className="text-gray-600">
+                              {folder.subfolderCount > 0 && `${folder.subfolderCount} subfolder${folder.subfolderCount === 1 ? '' : 's'} · `}
+                              {folder.documentCount} document{folder.documentCount === 1 ? '' : 's'}
+                            </p>
+                          </td>
+                          <td className="py-3 px-4">
+                            <p className="text-gray-600">{formatDate(folder.deletedAt)}</p>
+                          </td>
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-2">
+                              <span className="text-gray-900 font-medium">{daysRemaining}</span>
+                              {expiringSoon && (
+                                <span className="px-2 py-1 rounded text-xs font-medium bg-red-100 text-red-800">
+                                  Expiring
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-3 px-4">
+                            <button
+                              onClick={() => handleRestoreFolder(folder.folderId, folder.name)}
+                              disabled={actionLoading}
+                              className="p-1 hover:bg-blue-100 rounded transition disabled:opacity-50"
+                              title="Restore folder"
+                            >
+                              <RotateCcw className="w-4 h-4 text-blue-600" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
 
           {/* Deleted Documents Section */}
           <div className="bg-white rounded-lg shadow-sm p-6">

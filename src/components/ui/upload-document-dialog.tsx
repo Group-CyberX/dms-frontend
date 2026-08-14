@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { uploadDocument } from '@/lib/api-client';
+import { uploadDocument, getFolders, Folder } from '@/lib/api-client';
 import { useMultipartUpload } from '@/hooks/use-multipart-upload';
 import {
   Dialog,
@@ -22,26 +22,92 @@ import {
 } from '@/components/ui/select';
 import { Upload, X, AlertCircle, CheckCircle } from 'lucide-react';
 
+/** Root-to-leaf chain of folder ids leading to `folderId`, so a cascading
+ * picker can be pre-drilled-down to it. */
+function buildAncestorChain(folders: Folder[], folderId?: string): string[] {
+  if (!folderId) return [];
+  const byId = new Map(folders.map((f) => [f.folder_id, f]));
+  const chain: string[] = [];
+  let current: string | undefined = folderId;
+  while (current) {
+    chain.unshift(current);
+    current = byId.get(current)?.parent_folder_id ?? undefined;
+  }
+  return chain;
+}
+
 interface UploadDocumentDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onUploadSuccess?: () => void | Promise<void>;
+  /** Preselect this folder in the dropdown (e.g. the folder currently being browsed) */
+  defaultFolderId?: string;
 }
 
 export function UploadDocumentDialog({
   open,
   onOpenChange,
   onUploadSuccess,
+  defaultFolderId,
 }: UploadDocumentDialogProps) {
   const [files, setFiles] = useState<File[]>([]);
   const [documentName, setDocumentName] = useState('');
-  const [category, setCategory] = useState('');
+  // One entry per drill-down level: selectionPath[0] is the top-level folder
+  // chosen, selectionPath[1] the subfolder chosen inside it, and so on. The
+  // upload target is always the deepest entry actually chosen.
+  const [selectionPath, setSelectionPath] = useState<string[]>([]);
+  const [folders, setFolders] = useState<Folder[]>([]);
+  const [foldersLoading, setFoldersLoading] = useState(false);
   const [tags, setTags] = useState('');
   const [description, setDescription] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [percentComplete, setPercentComplete] = useState(0);
+
+  const selectedFolderId = selectionPath[selectionPath.length - 1] ?? '';
+
+  // One dropdown per drill-down level: level 0 is always the root folders;
+  // level i (i > 0) only appears once level i-1 has a selection AND that
+  // selection actually has children.
+  const folderLevels = useMemo(() => {
+    const levels: Folder[][] = [];
+    let parentId: string | null = null;
+    for (let depth = 0; ; depth++) {
+      const options = folders.filter((f) => (f.parent_folder_id ?? null) === parentId);
+      if (options.length === 0) break;
+      levels.push(options);
+      const chosen = selectionPath[depth];
+      if (!chosen) break;
+      parentId = chosen;
+    }
+    return levels;
+  }, [folders, selectionPath]);
+
+  const handleSelectAtLevel = (levelIndex: number, folderId: string) => {
+    setSelectionPath((prev) => [...prev.slice(0, levelIndex), folderId]);
+    if (error) setError(null);
+  };
+
+  // Load the folder list fresh each time the dialog opens, and pre-drill
+  // the picker down to the folder currently being browsed (if any).
+  useEffect(() => {
+    if (!open) return;
+    setFoldersLoading(true);
+    getFolders()
+      .then((data) => {
+        const list = Array.isArray(data) ? data : [];
+        setFolders(list);
+        setSelectionPath(buildAncestorChain(list, defaultFolderId));
+      })
+      .catch((err) => {
+        console.error('Failed to load folders:', err);
+        setFolders([]);
+        setSelectionPath([]);
+      })
+      .finally(() => setFoldersLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const {
     initiateUpload,
@@ -91,8 +157,8 @@ export function UploadDocumentDialog({
       setError('Document name is required');
       return;
     }
-    if (!category) {
-      setError('Category is required');
+    if (!selectedFolderId) {
+      setError('Please select a folder');
       return;
     }
 
@@ -116,7 +182,7 @@ export function UploadDocumentDialog({
           // Step 3: Complete
           const result = await completeUpload(sessionId, {
             title: documentName,
-            category: category || undefined,
+            folderId: selectedFolderId || undefined,
             tags: tags || undefined,
             description: description || undefined,
           });
@@ -145,7 +211,7 @@ export function UploadDocumentDialog({
           {
             file,
             title: documentName,
-            category: category,
+            folderId: selectedFolderId,
             tags: tags || undefined,
             description: description || undefined,
           },
@@ -171,7 +237,7 @@ export function UploadDocumentDialog({
       // Reset form on success
       setFiles([]);
       setDocumentName('');
-      setCategory('');
+      setSelectionPath([]);
       setTags('');
       setDescription('');
       setError(null);
@@ -329,28 +395,68 @@ export function UploadDocumentDialog({
               />
             </div>
 
-            {/* Category */}
+            {/* Folder (top level) */}
             <div className="space-y-1">
-              <label htmlFor="category" className="text-xs font-medium text-gray-700">
-                Category *
+              <label htmlFor="folder" className="text-xs font-medium text-gray-700">
+                Folder *
               </label>
-              <Select value={category} onValueChange={(value) => {
-                setCategory(value);
-                if (error) setError(null);
-              }}>
+              <Select
+                value={selectionPath[0] ?? ''}
+                onValueChange={(value) => handleSelectAtLevel(0, value)}
+                disabled={foldersLoading}
+              >
                 <SelectTrigger className="bg-white border-gray-300 h-9 text-sm">
-                  <SelectValue placeholder="Select category" />
+                  <SelectValue
+                    placeholder={foldersLoading ? 'Loading folders...' : 'Select folder'}
+                  />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="invoice">Invoice</SelectItem>
-                  <SelectItem value="contract">Contract</SelectItem>
-                  <SelectItem value="report">Report</SelectItem>
-                  <SelectItem value="proposal">Proposal</SelectItem>
-                  <SelectItem value="other">Other</SelectItem>
+                  {[...(folderLevels[0] ?? [])]
+                    .sort((a, b) => a.name.localeCompare(b.name))
+                    .map((folder) => (
+                      <SelectItem key={folder.folder_id} value={folder.folder_id}>
+                        {folder.name}
+                      </SelectItem>
+                    ))}
+                  {!foldersLoading && (folderLevels[0]?.length ?? 0) === 0 && (
+                    <div className="px-2 py-1.5 text-xs text-gray-500">
+                      No folders yet
+                    </div>
+                  )}
                 </SelectContent>
               </Select>
             </div>
           </div>
+
+          {/* Subfolder pickers — one appears per level, only once the folder
+              chosen above (or in the previous subfolder dropdown) actually has children. */}
+          {folderLevels.slice(1).map((options, i) => {
+            const levelIndex = i + 1;
+            return (
+              <div className="space-y-1" key={levelIndex}>
+                <label className="text-xs font-medium text-gray-700">
+                  Subfolder
+                </label>
+                <Select
+                  value={selectionPath[levelIndex] ?? ''}
+                  onValueChange={(value) => handleSelectAtLevel(levelIndex, value)}
+                >
+                  <SelectTrigger className="bg-white border-gray-300 h-9 text-sm">
+                    <SelectValue placeholder="Select subfolder (optional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[...options]
+                      .sort((a, b) => a.name.localeCompare(b.name))
+                      .map((folder) => (
+                        <SelectItem key={folder.folder_id} value={folder.folder_id}>
+                          {folder.name}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            );
+          })}
 
           {/* Tags */}
           <div className="space-y-1">
