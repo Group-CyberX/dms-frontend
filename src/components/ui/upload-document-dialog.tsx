@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { uploadDocument, getFolders, Folder } from '@/lib/api-client';
 import { useMultipartUpload } from '@/hooks/use-multipart-upload';
@@ -113,18 +113,27 @@ export function UploadDocumentDialog({
     initiateUpload,
     uploadChunks,
     completeUpload,
-    percentComplete: multipartPercent,
+    percentComplete: hookPercentComplete,
     error: uploadError,
   } = useMultipartUpload();
 
-  const MULTIPART_THRESHOLD = 100 * 1024 * 1024; // 100MB
+  // Sync hook progress to dialog state during upload
+  useEffect(() => {
+    if (isUploading) {
+      console.log('[Dialog] Syncing progress from hook:', hookPercentComplete);
+      setPercentComplete(hookPercentComplete);
+    }
+  }, [hookPercentComplete, isUploading]);
+
+  const MULTIPART_THRESHOLD = 100 * 1024 * 1024; // 100MB - threshold for switching to multipart
+  const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB - max file size
 
   const onDrop = (acceptedFiles: File[]) => {
     const validFiles = acceptedFiles.filter(
-      (file) => file.size <= 100 * 1024 * 1024
+      (file) => file.size <= MAX_FILE_SIZE
     );
     if (validFiles.length < acceptedFiles.length) {
-      setError('Some files were too large (max 100MB) and were not added.');
+      setError('Some files were too large (max 500MB) and were not added.');
     } else {
       setError(null);
     }
@@ -173,7 +182,12 @@ export function UploadDocumentDialog({
 
         try {
           // Step 1: Initiate
-          const initResponse = await initiateUpload(file);
+          const initResponse = await initiateUpload(file, {
+            title: documentName,
+            category: category || undefined,
+            tags: tags || undefined,
+            description: description || undefined,
+          });
           const { sessionId, partSize } = initResponse;
 
           // Step 2: Upload chunks
@@ -195,7 +209,8 @@ export function UploadDocumentDialog({
 
           console.log('Multipart upload successful!', result);
           setSuccess(true);
-          setPercentComplete(100);
+          // Progress is already at 100% from completeUpload hook
+          setIsUploading(false);
         } catch (error) {
           console.error('Multipart upload failed:', error);
           const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
@@ -216,9 +231,10 @@ export function UploadDocumentDialog({
             description: description || undefined,
           },
           (progress) => {
-            // Update progress bar in real-time (KB by KB)
+            // Update progress bar in real-time
+            // Progress is capped at 95% during upload, then shows processing (98%), then 100% on completion
             setPercentComplete(progress.percentage);
-            console.log(`Uploaded: ${(progress.loaded / 1024 / 1024).toFixed(2)}MB / ${(progress.total / 1024 / 1024).toFixed(2)}MB`);
+            console.log(`[Dialog] Upload progress: ${(progress.loaded / 1024 / 1024).toFixed(2)}MB / ${(progress.total / 1024 / 1024).toFixed(2)}MB = ${progress.percentage.toFixed(1)}%`);
           }
         );
 
@@ -230,7 +246,7 @@ export function UploadDocumentDialog({
 
         console.log('Upload successful!', result);
         setSuccess(true);
-        setPercentComplete(100);
+        // Progress is already at 100% from the API callback, just mark as not uploading
         setIsUploading(false);
       }
 
@@ -301,13 +317,13 @@ export function UploadDocumentDialog({
               <div className="flex justify-between items-center">
                 <span className="text-sm text-gray-600">Uploading...</span>
                 <span className="text-sm font-semibold text-[#953002]">
-                  {(multipartPercent || percentComplete).toFixed(1)}%
+                  {percentComplete.toFixed(1)}%
                 </span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2.5">
                 <div
                   className="bg-[#953002] h-2.5 rounded-full transition-all duration-300"
-                  style={{ width: `${multipartPercent || percentComplete}%` }}
+                  style={{ width: `${percentComplete}%` }}
                 />
               </div>
             </div>
@@ -337,7 +353,7 @@ export function UploadDocumentDialog({
                     Drag & drop files here
                   </p>
                   <p className="text-xs text-gray-500 mb-3">
-                    Maximum file size: 100MB
+                    Maximum file size: 500MB
                   </p>
                   <button
                     type="button"
