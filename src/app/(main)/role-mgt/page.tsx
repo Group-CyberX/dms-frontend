@@ -14,76 +14,12 @@ import {
 import { Plus, Users, Save, Loader, Trash2 } from "lucide-react";
 import { CreateRoleDialog } from "../../../components/role-mgt/CreateRoleDialog";
 import { useAuthStore } from "@/store/auth-store";
-
-type PermissionGroup = {
-  title: string;
-  permissions: string[];
-};
-
-const PERMISSIONS: PermissionGroup[] = [
-  { title: "Dashboard", permissions: ["View", "View Analytics"] },
-  { title: "Documents", permissions: ["View", "Create", "Edit", "Delete", "Share"] },
-  { title: "Search", permissions: ["View", "Advanced Search"] },
-  { title: "Tasks", permissions: ["View", "Create", "Edit", "Delete"] },
-  { title: "Workflows", permissions: ["View", "Create", "Approve", "Edit", "Delete"] },
-  { title: "Recycle Bin", permissions: ["View", "Restore", "Permanently Delete"] },
-  { title: "Audit Logs", permissions: ["View", "Export"] },
-  { title: "ERP Integration", permissions: ["View", "Configure", "Sync", "Delete"] },
-  { title: "Policies", permissions: ["View", "Create", "Edit", "Delete"] },
-  { title: "Users", permissions: ["View", "Create", "Edit", "Delete"] },
-  { title: "Roles", permissions: ["View", "Create", "Edit", "Delete"] },
-  { title: "System", permissions: ["View Health", "Configure", "Backup", "Restore"] },
-  { title: "Settings", permissions: ["View", "Edit", "Manage API Keys", "Manage Document Policy", "Manage Access Control", "Execute Danger Zone"] },
-];
-
-const cellKey = (group: string, permission: string) => `${group}::${permission}`;
-
-function toSingular(name: string): string {
-  if (name.endsWith("ies")) return name.slice(0, -3) + "y";
-  if (name.endsWith("s")) return name.slice(0, -1);
-  return name;
-}
-
-function toFallbackPermissionKey(group: string, permission: string): string {
-  const cleanGroup = toSingular(group.replace(/\s+/g, ""));
-  const cleanPermission = permission.replace(/\s+/g, "");
-  return `can${cleanPermission}${cleanGroup}`;
-}
-
-function parsePermissionJson(raw: string): Record<string, boolean> {
-  try {
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    const result: Record<string, boolean> = {};
-
-    for (const [key, value] of Object.entries(parsed)) {
-      result[key] = Boolean(value);
-    }
-
-    return result;
-  } catch {
-    return {};
-  }
-}
-
-function permissionEnabled(
-  permissionMap: Record<string, boolean>,
-  group: string,
-  permission: string
-): boolean {
-  const groupToken = toSingular(group).toLowerCase().replace(/\s+/g, "");
-  const permissionToken = permission.toLowerCase().replace(/\s+/g, "");
-
-  for (const [key, value] of Object.entries(permissionMap)) {
-    if (!value) continue;
-
-    const normalized = key.toLowerCase().replace(/[^a-z]/g, "");
-    if (normalized.includes(groupToken) && normalized.includes(permissionToken)) {
-      return true;
-    }
-  }
-
-  return false;
-}
+import {
+  PERMISSION_CATALOG,
+  PERMISSION_KEYS,
+  buildPermissionMap,
+  parsePermissionJson,
+} from "@/lib/permissions";
 
 function memberBadge(count: number) {
   return (
@@ -180,19 +116,14 @@ export default function RoleManagementPage() {
     setRoleName(selectedRole.name);
 
     const permissionMap = parsePermissionJson(selectedRole.permissions);
-    const enabledCount = Object.values(permissionMap).filter(Boolean).length;
-    setRoleDescription(`${enabledCount} permission${enabledCount === 1 ? "" : "s"} assigned`);
 
     const nextState: Record<string, boolean> = {};
-    for (const group of PERMISSIONS) {
-      for (const permission of group.permissions) {
-        nextState[cellKey(group.title, permission)] = permissionEnabled(
-          permissionMap,
-          group.title,
-          permission
-        );
-      }
+    for (const key of PERMISSION_KEYS) {
+      nextState[key] = permissionMap[key] === true;
     }
+
+    const enabledCount = Object.values(nextState).filter(Boolean).length;
+    setRoleDescription(`${enabledCount} permission${enabledCount === 1 ? "" : "s"} assigned`);
 
     setPermissionState(nextState);
   }, [selectedRole]);
@@ -211,11 +142,11 @@ export default function RoleManagementPage() {
     return map;
   }, [users]);
 
-  const handlePermissionChange = (group: string, permission: string, checked: boolean) => {
+  const handlePermissionChange = (permissionKey: string, checked: boolean) => {
     setSaveMessage(null);
     setPermissionState((current) => ({
       ...current,
-      [cellKey(group, permission)]: checked,
+      [permissionKey]: checked,
     }));
   };
 
@@ -227,25 +158,7 @@ export default function RoleManagementPage() {
     setSaveMessage(null);
 
     try {
-      const currentMap = parsePermissionJson(selectedRole.permissions);
-      const nextMap: Record<string, boolean> = { ...currentMap };
-
-      for (const group of PERMISSIONS) {
-        for (const permission of group.permissions) {
-          const key = cellKey(group.title, permission);
-          const value = permissionState[key] ?? false;
-
-          const existingKey = Object.keys(nextMap).find((k) => {
-            const normalized = k.toLowerCase().replace(/[^a-z]/g, "");
-            const g = toSingular(group.title).toLowerCase().replace(/\s+/g, "");
-            const p = permission.toLowerCase().replace(/\s+/g, "");
-            return normalized.includes(g) && normalized.includes(p);
-          });
-
-          const targetKey = existingKey ?? toFallbackPermissionKey(group.title, permission);
-          nextMap[targetKey] = value;
-        }
-      }
+      const nextMap = buildPermissionMap((key) => permissionState[key] === true);
 
       const updated = await updateRolePermissions(
         selectedRole.roleId,
@@ -395,18 +308,18 @@ export default function RoleManagementPage() {
                 <h3 className="text-sm font-medium text-slate-700">Permissions</h3>
 
                 <div className="space-y-4">
-                  {PERMISSIONS.map((group) => (
+                  {PERMISSION_CATALOG.map((group) => (
                     <div key={group.title} className="space-y-2">
                       <h4 className="text-sm font-semibold text-slate-700">{group.title}</h4>
 
                       <div className="grid gap-x-10 gap-y-1.5 sm:grid-cols-2 xl:grid-cols-3">
                         {group.permissions.map((permission) => (
                           <PermissionCheckbox
-                            key={`${group.title}-${permission}`}
-                            label={permission}
-                            checked={permissionState[cellKey(group.title, permission)] ?? false}
+                            key={permission.key}
+                            label={permission.label}
+                            checked={permissionState[permission.key] ?? false}
                             onChange={(checked) =>
-                              handlePermissionChange(group.title, permission, checked)
+                              handlePermissionChange(permission.key, checked)
                             }
                           />
                         ))}
