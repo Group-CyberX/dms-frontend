@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import { Loader } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/store/auth-store';
@@ -64,7 +65,9 @@ type TaskRow = {
   task: WorkflowTask;
   workflow: WorkflowInstance | null;
   documentTitle: string;
+  documentId: string;
   assigneeLabel: string;
+  assignedByLabel: string;
   isAssignedToMe: boolean;
   isOverdue: boolean;
 };
@@ -153,6 +156,26 @@ const formatAssigneeLabel = (
   return taskUserId;
 };
 
+const formatCreatorLabel = (
+  creatorUserId: string | undefined,
+  approvers: ApproverOption[]
+) => {
+  if (!creatorUserId) {
+    return 'Unknown';
+  }
+
+  if (creatorUserId === 'TEMP_USER') {
+    return 'TEMP_USER';
+  }
+
+  const creator = approvers.find((item) => String(item.userId) === String(creatorUserId));
+  if (creator) {
+    return `${creator.username} - ${creator.role}`;
+  }
+
+  return creatorUserId;
+};
+
 export default function MyTasksPage() {
   const token = useAuthStore((state) => state.accessToken);
   const hasHydrated = useAuthStore((state) => state.hasHydrated);
@@ -213,7 +236,7 @@ export default function MyTasksPage() {
       const [approverResponse, workflowResponse, documentResponse] = await Promise.all([
         fetchWithAuth('http://localhost:8081/api/users'),
         fetchWithAuth('http://localhost:8081/api/workflows'),
-        fetchWithAuth('http://localhost:8081/api/documents'),
+        fetchWithAuth('http://localhost:8081/api/documents?all=true'),
       ]);
 
       if (!approverResponse.ok) {
@@ -317,6 +340,7 @@ export default function MyTasksPage() {
             : null;
 
         const assigneeLabel = formatAssigneeLabel(task.userId, approvers, templateStep);
+        const assignedByLabel = formatCreatorLabel(workflow?.createdByUserId, approvers);
 
         // Determine if the task is assigned to the current user based on user ID or role
         const isAssignedToMe = currentUser
@@ -338,7 +362,9 @@ export default function MyTasksPage() {
           workflow,
           documentTitle:
             document?.title ?? document?.name ?? document?.documentName ?? document?.filename ?? 'Untitled Document',
+          documentId: String(workflowDocumentId),
           assigneeLabel,
+          assignedByLabel,
           isAssignedToMe,
           isOverdue,
         };
@@ -503,7 +529,7 @@ export default function MyTasksPage() {
                 <th className="p-2">Document</th>
                 <th className="p-2">Workflow</th>
                 <th className="p-2">Step</th>
-                <th className="p-2">Assignee</th>
+                <th className="p-2">Assigned By</th>
                 <th className="p-2">Status</th>
                 <th className="p-2">Due Date</th>
                 <th className="p-2">Priority</th>
@@ -533,7 +559,12 @@ export default function MyTasksPage() {
 
                     {/* Document Title */}
                     <td className="p-2">
-                      <div className="font-medium text-gray-900">{row.documentTitle}</div>
+                      <Link 
+                        href={`/documents/${row.documentId}?taskId=${row.task.id}`}
+                        className="font-medium text-[#953002] hover:text-[#7a2401] hover:underline cursor-pointer"
+                      >
+                        {row.documentTitle}
+                      </Link>
                     </td>
 
                     {/* Workflow Name */}
@@ -542,8 +573,8 @@ export default function MyTasksPage() {
                     {/* Step Order */}
                     <td className="p-2">Step {row.task.stepOrder}</td>
 
-                    {/* Assignee */}
-                    <td className="p-2">{row.assigneeLabel}</td>
+                    {/* Assigned By */}
+                    <td className="p-2">{row.assignedByLabel}</td>
 
                     {/* Status */}
                     <td className="p-2">

@@ -4,6 +4,7 @@ import { LoginForm } from "@/components/auth/login-form"
 import Link from "next/link"
 import { Separator } from "@/components/ui/separator"
 import { Button } from "@/components/ui/button"
+import { Suspense } from "react"
 
 export default function LoginPage() {
   return (
@@ -26,7 +27,9 @@ export default function LoginPage() {
         </div>
 
         {/* Login Form */}
-        <LoginForm />
+        <Suspense fallback={<div className="text-center py-4 text-sm text-gray-500">Loading form...</div>}>
+          <LoginForm />
+        </Suspense>
 
         {/* Forgot Password */}
         <Link

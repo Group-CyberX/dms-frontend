@@ -194,6 +194,11 @@ export async function uploadDocument(
   onProgress?: (progress: { loaded: number; total: number; percentage: number }) => void
 ): Promise<DocumentUploadResponse> {
   return new Promise((resolve, reject) => {
+    console.log('[SINGLE_UPLOAD] Starting single-file upload...');
+    console.log('[SINGLE_UPLOAD] File:', params.file.name);
+    console.log('[SINGLE_UPLOAD] Size:', params.file.size, 'bytes');
+    console.log('[SINGLE_UPLOAD] Title:', params.title);
+    
     const xhr = new XMLHttpRequest();
     const formData = new FormData();
     formData.append('file', params.file, makeSafeFilename(params.file));
@@ -204,10 +209,16 @@ export async function uploadDocument(
     if (params.tags) formData.append('tags', params.tags);
     if (params.description) formData.append('description', params.description);
 
-    // Track upload progress (KB by KB)
+    let uploadComplete = false;
+
+    // Track upload progress (KB by KB) - cap at 95% to reserve 5% for backend processing
     xhr.upload.onprogress = (event) => {
-      if (event.lengthComputable && onProgress) {
-        const percentage = (event.loaded / event.total) * 100;
+      if (event.lengthComputable && onProgress && !uploadComplete) {
+        // Cap progress at 95% during upload - reserve 5% for server-side processing
+        let percentage = (event.loaded / event.total) * 100;
+        if (percentage > 95) percentage = 95;
+        
+        console.log(`[SINGLE_UPLOAD] Upload progress: ${(event.loaded / 1024 / 1024).toFixed(2)}MB / ${(event.total / 1024 / 1024).toFixed(2)}MB = ${percentage.toFixed(1)}%`);
         onProgress({
           loaded: event.loaded,
           total: event.total,
@@ -217,27 +228,56 @@ export async function uploadDocument(
     };
 
     xhr.onload = () => {
+      uploadComplete = true;
+      console.log('[SINGLE_UPLOAD] Response received from server, processing backend validation...');
+      
+      // Show 98% while waiting for full response parsing
+      if (onProgress) {
+        onProgress({
+          loaded: params.file.size,
+          total: params.file.size,
+          percentage: 98,
+        });
+      }
+
       if (xhr.status >= 200 && xhr.status < 300) {
         try {
           const response = JSON.parse(xhr.responseText);
+          console.log('[SINGLE_UPLOAD] Upload completed successfully');
+          console.log('[SINGLE_UPLOAD] Response:', response);
+          
+          // Show 100% only after successful response parsing
+          if (onProgress) {
+            onProgress({
+              loaded: params.file.size,
+              total: params.file.size,
+              percentage: 100,
+            });
+          }
+          
           resolve(response);
         } catch (error) {
+          console.error('[SINGLE_UPLOAD] Error parsing response:', error);
           reject(new Error('Failed to parse response'));
         }
       } else {
         try {
           const errorData = JSON.parse(xhr.responseText);
+          console.error('[SINGLE_UPLOAD] Upload failed:', errorData.message);
           reject(new Error(errorData.message || `Upload failed with status ${xhr.status}`));
         } catch {
+          console.error('[SINGLE_UPLOAD] Upload failed with status:', xhr.status);
           reject(new Error(`Upload failed with status ${xhr.status}`));
         }
       }
     };
 
     xhr.onerror = () => {
+      console.error('[SINGLE_UPLOAD] Network error during upload');
       reject(new Error('Upload failed - network error'));
     };
 
+    console.log('[SINGLE_UPLOAD] Sending request...');
     xhr.open('POST', `${API_BASE_URL}/documents/upload`);
     const authHeader = getAuthHeader().Authorization;
     if (authHeader) xhr.setRequestHeader('Authorization', authHeader);
@@ -480,26 +520,96 @@ export async function deleteFolder(folderId: string): Promise<void> {
 }
 
 /**
- * Upload new document version
+ * Upload new document version with progress tracking
  */
-export async function uploadNewVersion(documentId: string, file: File): Promise<DocumentVersion> {
-  const formData = new FormData();
-  formData.append('file', file, makeSafeFilename(file));
+export async function uploadNewVersion(
+  documentId: string,
+  file: File,
+  onProgress?: (progress: { loaded: number; total: number; percentage: number }) => void
+): Promise<DocumentVersion> {
+  return new Promise((resolve, reject) => {
+    console.log('[VERSION_UPLOAD] Starting version upload...');
+    console.log('[VERSION_UPLOAD] File:', file.name);
+    console.log('[VERSION_UPLOAD] Size:', file.size, 'bytes');
+    
+    const xhr = new XMLHttpRequest();
+    const formData = new FormData();
+    formData.append('file', file, makeSafeFilename(file));
 
-  const response = await fetch(`${API_BASE_URL}/documents/${documentId}/versions/upload`, {
-    method: 'POST',
-    body: formData,
-    headers: getAuthHeader(),
+    let uploadComplete = false;
+
+    // Track upload progress - cap at 95% to reserve 5% for backend processing
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable && onProgress && !uploadComplete) {
+        // Cap progress at 95% during upload - reserve 5% for server
+        let percentage = (event.loaded / event.total) * 100;
+        if (percentage > 95) percentage = 95;
+        
+        console.log(`[VERSION_UPLOAD] Upload progress: ${(event.loaded / 1024 / 1024).toFixed(2)}MB / ${(event.total / 1024 / 1024).toFixed(2)}MB = ${percentage.toFixed(1)}%`);
+        onProgress({
+          loaded: event.loaded,
+          total: event.total,
+          percentage,
+        });
+      }
+    };
+
+    xhr.onload = () => {
+      uploadComplete = true;
+      console.log('[VERSION_UPLOAD] Response received from server, processing backend...');
+      
+      // Show 98% while waiting for response parsing
+      if (onProgress) {
+        onProgress({
+          loaded: file.size,
+          total: file.size,
+          percentage: 98,
+        });
+      }
+
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const response = JSON.parse(xhr.responseText);
+          console.log('[VERSION_UPLOAD] Version upload completed successfully');
+          console.log('[VERSION_UPLOAD] Response:', response);
+          
+          // Show 100% only after successful response parsing
+          if (onProgress) {
+            onProgress({
+              loaded: file.size,
+              total: file.size,
+              percentage: 100,
+            });
+          }
+          
+          resolve(response);
+        } catch (error) {
+          console.error('[VERSION_UPLOAD] Error parsing response:', error);
+          reject(new Error('Failed to parse response'));
+        }
+      } else {
+        try {
+          const errorData = JSON.parse(xhr.responseText);
+          console.error('[VERSION_UPLOAD] Upload failed:', errorData.message);
+          reject(new Error(errorData.message || `Upload failed with status ${xhr.status}`));
+        } catch {
+          console.error('[VERSION_UPLOAD] Upload failed with status:', xhr.status);
+          reject(new Error(`Upload failed with status ${xhr.status}`));
+        }
+      }
+    };
+
+    xhr.onerror = () => {
+      console.error('[VERSION_UPLOAD] Network error during upload');
+      reject(new Error('Upload failed - network error'));
+    };
+
+    console.log('[VERSION_UPLOAD] Sending request...');
+    xhr.open('POST', `${API_BASE_URL}/documents/${documentId}/versions/upload`);
+    const authHeader = getAuthHeader().Authorization;
+    if (authHeader) xhr.setRequestHeader('Authorization', authHeader);
+    xhr.send(formData);
   });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(
-      errorData.message || `Upload failed with status ${response.status}`
-    );
-  }
-
-  return response.json();
 }
 
 /**
@@ -636,17 +746,27 @@ export async function permanentlyDeleteMultipleDocuments(documentIds: string[]):
 // ============= MULTIPART UPLOAD FUNCTIONS =============
 
 /**
- * Initiate multipart upload session
+ * Initiate multipart upload session with metadata validation
  */
 export async function initiateMultipartUpload(
   fileName: string,
   totalSize: number,
-  documentId?: string
+  title: string,
+  category: string,
+  tags?: string,
+  description?: string,
+  documentId?: string,
+  folderId?: string
 ): Promise<{ sessionId: string; s3UploadId: string; partSize: number }> {
   const params = new URLSearchParams({
     fileName,
     totalSize: totalSize.toString(),
+    title,
+    category,
+    ...(tags && { tags }),
+    ...(description && { description }),
     ...(documentId && { documentId }),
+    ...(folderId && { folderId }),
   });
 
   const response = await fetch(`${API_BASE_URL}/multipart-uploads/initiate?${params}`, {
@@ -655,7 +775,8 @@ export async function initiateMultipartUpload(
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to initiate multipart upload: ${response.statusText}`);
+    const errorText = await response.text();
+    throw new Error(`Validation failed: ${errorText}`);
   }
 
   return response.json();
@@ -727,7 +848,8 @@ export async function completeMultipartUpload(
 }
 
 /**
- * Get upload progress
+ * Get upload progress with S3 verification
+ * Returns actual bytes uploaded to S3 (source of truth)
  */
 export async function getUploadProgress(
   sessionId: string
@@ -937,4 +1059,140 @@ export async function updateRolePermissions(
   }
 
   return response.json();
+}
+
+export interface SearchHistoryItem {
+  searchId: string;
+  query: string;
+  documentId: string;
+  documentTitle: string;
+  timestamp: string;
+}
+
+/**
+ * Get search history for the current user
+ */
+export async function getSearchHistory(): Promise<SearchHistoryItem[]> {
+  const response = await fetch(`${API_BASE_URL}/search/history`, {
+    headers: getAuthHeader(),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch search history: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Clear search history for the current user
+ */
+export async function clearSearchHistory(): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/search/history`, {
+    method: 'DELETE',
+    headers: getAuthHeader(),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to clear search history: ${response.statusText}`);
+  }
+}
+
+/**
+ * Log a clicked search result to history
+ */
+export async function logSearchClick(query: string, documentId: string): Promise<void> {
+  const response = await fetchWithAuth(`${API_BASE_URL}/search/log`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      query,
+      clickedDocId: documentId,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to log search click: ${response.statusText}`);
+  }
+}
+
+export interface ProcessingJob {
+  jobId: string;
+  documentVersionId: string;
+  jobType: string;
+  status: string; // "PENDING", "IN_PROGRESS", "SUCCESS", "FAILED"
+  createdAt?: string;
+}
+
+/**
+ * Fetch jobs for a document
+ */
+export async function getDocumentJobs(documentId: string): Promise<ProcessingJob[]> {
+  const response = await fetchWithAuth(`${API_BASE_URL}/jobs?documentId=${documentId}`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch processing jobs');
+  }
+  return response.json();
+}
+
+export interface DocumentMetadata {
+  metadataId: string;
+  documentId: string;
+  key: string;
+  value: string;
+}
+
+/**
+ * Get all metadata for a document
+ */
+export async function getDocumentMetadata(documentId: string): Promise<DocumentMetadata[]> {
+  const response = await fetchWithAuth(`${API_BASE_URL}/metadata/document/${documentId}`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch metadata: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+/**
+ * Add metadata to a document
+ */
+export async function addMetadata(documentId: string, key: string, value: string): Promise<DocumentMetadata> {
+  const response = await fetchWithAuth(`${API_BASE_URL}/metadata/document/${documentId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ key, value }),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to add metadata: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+/**
+ * Update metadata for a document
+ */
+export async function updateMetadata(documentId: string, key: string, value: string): Promise<DocumentMetadata> {
+  const response = await fetchWithAuth(`${API_BASE_URL}/metadata/document/${documentId}/${encodeURIComponent(key)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ key, value }),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to update metadata: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+/**
+ * Delete metadata from a document
+ */
+export async function deleteMetadata(documentId: string, key: string): Promise<void> {
+  const response = await fetchWithAuth(`${API_BASE_URL}/metadata/document/${documentId}/${encodeURIComponent(key)}`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to delete metadata: ${response.statusText}`);
+  }
 }

@@ -25,7 +25,7 @@ export function DocumentPreview({ url, type, title }: DocumentPreviewProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [docxContent, setDocxContent] = useState<string>('');
-  const [xlsxContent, setXlsxContent] = useState<{headers: string[], rows: (string | number)[][]}>({headers: [], rows: []});
+  const [xlsxContent, setXlsxContent] = useState<{ headers: string[], rows: (string | number)[][] }>({ headers: [], rows: [] });
   const [zoom, setZoom] = useState(100);
   const minZoom = 50;
   const maxZoom = 300;
@@ -43,12 +43,12 @@ export function DocumentPreview({ url, type, title }: DocumentPreviewProps) {
         setError(null);
         const pdf = await pdfjsLib.getDocument(url).promise;
         if (!isMounted) return;
-        
+
         setTotalPages(pdf.numPages);
 
         const page = await pdf.getPage(currentPage);
         if (!isMounted) return;
-        
+
         const viewport = page.getViewport({ scale: (zoom / 100) * 1.5 });
 
         const canvas = canvasRef.current;
@@ -69,7 +69,7 @@ export function DocumentPreview({ url, type, title }: DocumentPreviewProps) {
           canvas: canvas,
           viewport: viewport,
         });
-        
+
         await renderTask.promise;
       } catch (err: any) {
         // Don't show error if it's a cancellation
@@ -134,14 +134,14 @@ export function DocumentPreview({ url, type, title }: DocumentPreviewProps) {
         const response = await fetch(url);
         const arrayBuffer = await response.arrayBuffer();
         const workbook = XLSX.read(arrayBuffer, { type: 'array' });
-        
+
         // Get the first sheet
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
-        
+
         // Convert to JSON for easier rendering
         const json = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-        
+
         if (json.length > 0) {
           const headers = (json[0] as string[]).map(h => String(h));
           const rows = (json.slice(1) as (string | number)[][]);
@@ -336,7 +336,7 @@ export function DocumentPreview({ url, type, title }: DocumentPreviewProps) {
                 transition: 'transform 0.2s ease',
               }}
             >
-              <div 
+              <div
                 className="prose prose-sm max-w-none text-gray-900"
                 dangerouslySetInnerHTML={{ __html: docxContent }}
               />
