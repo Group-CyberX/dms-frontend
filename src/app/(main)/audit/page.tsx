@@ -17,7 +17,8 @@ export default function AuditPage() {
         setIsLoading(true);
         try {
             const data = await auditService.getLogs();
-            setLogs(data);
+            // If you know the backend array is perfectly sequential, you can simply reverse it:
+            setLogs(data.reverse());
         } catch (error) {
             console.error("Failed to load audit logs:", error);
             setLogs([]); 

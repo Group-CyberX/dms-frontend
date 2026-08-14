@@ -8,7 +8,6 @@ import { NOTIFICATION_CONFIG } from "@/lib/constants";
 import { Notification } from "@/types/notification";
 import { notificationService } from "@/lib/notificationServices";
 
-/*Helper component to handle dynamic time formatting.*/
 function TimeAgo({ date }: { date: string }) {
   const [time, setTime] = useState(
     formatDistanceToNow(new Date(date), { addSuffix: true })
@@ -24,10 +23,8 @@ function TimeAgo({ date }: { date: string }) {
   return <span>{time}</span>;
 }
 
-/*logic for notification categorization.*/
 function getNotificationTitle(message: string) {
   const msg = message.toLowerCase();
-
   if (msg.includes("approved")) return "Document Approved";
   if (msg.includes("rejected")) return "Document Rejected";
   if (msg.includes("uploaded")) return "New Upload";
@@ -40,32 +37,38 @@ function getNotificationTitle(message: string) {
   if (msg.includes("version")) return "Version Update";
   if (msg.includes("error") || msg.includes("failed")) return "Action Failed";
   if (msg.includes("requires your approval")) return "Action Required";
-  if (msg.includes("new login") || msg.includes("logged in")) return "New Login Detected";
-  if (msg.includes("password") && msg.includes("changed")) return "Password Changed";
-
+  if (msg.includes("modified") || msg.includes("edited")) return "Document Updated";
+  if (msg.includes("new login") || msg.includes("logged in")) return "Security Alert";
   return "System Alert";
 }
 
 export function Header() {
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [notifications, setNotifications] = useState<any[]>([]);
   const [isOpen, setIsOpen] = useState(false);
-  const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
+  const [selectedNotification, setSelectedNotification] = useState<any | null>(null);
   const [fetchError, setFetchError] = useState<boolean>(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  /*
-   Notification Fetching logic.
-   Utilizes the service layer and handles errors.
-   */
+  const getSafeId = (n: any): string => {
+    const id = n?.notificationId ?? n?.notification_id;
+    return id ? String(id).toLowerCase() : "";
+  };
+
   const fetchNotifications = async () => {
     try {
       const data = await notificationService.getAll();
-      setNotifications(data);
+      if (Array.isArray(data)) {
+        // Only keep notifications where isRead is false or undefined
+        const unreadOnly = data.filter((n: any) => {
+          const isReadField = n.isRead ?? n.read ?? n.is_read ?? false;
+          return !isReadField;
+        });
+        setNotifications(unreadOnly);
+      }
       setFetchError(false);
     } catch (error) {
       console.error("Fetch failed:", error);
       setFetchError(true);
-      setNotifications([]); 
     }
   };
 
@@ -75,41 +78,32 @@ export function Header() {
     return () => clearInterval(interval);
   }, []);
 
-  /*Handler for marking individual notifications as read.*/
-  const handleNotificationClick = async (n: Notification) => {
+  const handleNotificationClick = async (n: any) => {
     setSelectedNotification(n);
+    const targetId = getSafeId(n);
 
-    if (!n.isRead) {
+    // CRITICAL FRONTEND FIX: Immediately remove it from state so it vanishes visually on click
+    setNotifications((prev) => prev.filter((item) => getSafeId(item) !== targetId));
+
+    if (targetId) {
       try {
-        const success = await notificationService.markAsRead(n.notificationId);
-        if (success) {
-          setNotifications((prev) =>
-            prev.map((notif) =>
-              notif.notificationId === n.notificationId 
-                ? { ...notif, isRead: true, read: true } 
-                : notif
-            )
-          );
-        }
+        await notificationService.markAsRead(targetId);
       } catch (error) {
         console.error("Mark read failed:", error);
       }
     }
   };
 
-  /*Handler for marking all notifications as read.*/
   const handleMarkAllRead = async () => {
+    // Instantly empty the dropdown array layout
+    setNotifications([]);
     try {
-      const success = await notificationService.markAllRead();
-      if (success) {
-        setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
-      }
+      await notificationService.markAllRead();
     } catch (error) {
       console.error("Mark all read failed:", error);
     }
   };
 
-  // Click outside listener for dropdown
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (isOpen && dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -120,11 +114,10 @@ export function Header() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [isOpen]);
 
-  const unreadCount = notifications?.filter((n) => !n.isRead).length || 0;
+  const unreadCount = notifications.length;
 
   return (
     <header className="flex h-16 w-full items-center justify-between border-b bg-white px-6">
-      {/* Search Bar Container */}
       <div className="flex items-center flex-1 max-w-md">
         <div className="relative w-full">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -137,7 +130,6 @@ export function Header() {
       </div>
 
       <div className="flex items-center gap-6">
-        {/* Notification Bell Section */}
         <div className="relative" ref={dropdownRef}>
           <button
             onClick={() => setIsOpen(!isOpen)}
@@ -174,15 +166,13 @@ export function Header() {
                 ) : unreadCount === 0 ? (
                   <p className="p-10 text-center text-xs text-gray-400">No new notifications</p>
                 ) : (
-                  notifications
-                    .filter((n) => !n.isRead)
-                    .map((n) => (
+                  notifications.map((n) => {
+                    const uniqueKey = getSafeId(n) || n.message;
+                    return (
                       <div
-                        key={n.notificationId}
+                        key={uniqueKey}
                         onClick={() => handleNotificationClick(n)}
-                        className={`flex gap-3 p-4 border-b hover:bg-slate-100 transition-colors relative ${
-                          !(n.isRead ?? n.read) ? "bg-[#953002]/5" : "bg-white"
-                        }`}
+                        className="flex gap-3 p-4 border-b hover:bg-slate-100 transition-colors relative bg-[#953002]/5 cursor-pointer"
                       >
                         <div className="h-8 w-8 rounded-full bg-orange-100 flex items-center justify-center shrink-0">
                           <FileText className="h-4 w-4 text-orange-700" />
@@ -194,15 +184,14 @@ export function Header() {
                           </p>
                           <p className="text-[11px] text-gray-500 mt-1 leading-tight">{n.message}</p>
                           <p className="text-[10px] text-gray-400 mt-2">
-                            {n.createdAt ? <TimeAgo date={n.createdAt} /> : "Just now"}
+                            {n.createdAt ?? n.created_at ? <TimeAgo date={n.createdAt ?? n.created_at} /> : "Just now"}
                           </p>
                         </div>
 
-                        {!(n.isRead ?? n.read) && (
-                          <div className="h-2 w-2 rounded-full bg-[#953002] absolute right-4 top-4" />
-                        )}
+                        <div className="h-2 w-2 rounded-full bg-[#953002] absolute right-4 top-4" />
                       </div>
-                    ))
+                    );
+                  })
                 )}
               </div>
 
@@ -215,7 +204,6 @@ export function Header() {
           )}
         </div>
 
-        {/* User profile */}
         <div className="flex items-center gap-3 border-l pl-6">
           <div className="text-right hidden sm:block">
             <p className="text-sm font-semibold text-gray-800">Kamal Gunarathne</p>

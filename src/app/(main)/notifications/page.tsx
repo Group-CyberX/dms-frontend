@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { FileText, Search, Trash2, Bell, ArrowLeft } from "lucide-react";
+import { FileText, Search, Trash2, Bell, ArrowLeft, CheckCircle2, AlertTriangle } from "lucide-react"; 
 import { formatDistanceToNow } from 'date-fns';
 import { notificationService } from "@/lib/notificationServices";
 import { Notification } from "@/types/notification";
@@ -14,6 +14,12 @@ export default function AllNotificationsPage() {
     const [filter, setFilter] = useState<'all' | 'unread' | 'read'>('all');
     const [isLoading, setIsLoading] = useState(true);
     const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
+    
+    // State to hold the ID of the notification scheduled for deletion
+    const [deleteConfirmation, setDeleteConfirmation] = useState<string | null>(null);
+    
+    // Toast state management
+    const [toast, setToast] = useState<{ show: boolean; message: string } | null>(null);
 
     const loadData = async () => {
         try {
@@ -30,7 +36,6 @@ export default function AllNotificationsPage() {
 
     useEffect(() => { loadData(); }, []);
 
-    // Logic to mark as read and show popup
     const handleNotificationClick = async (n: Notification) => {
         setSelectedNotification(n);
 
@@ -38,7 +43,6 @@ export default function AllNotificationsPage() {
             try {
                 const success = await notificationService.markAsRead(n.notificationId);
                 if (success) {
-                    // Update local state so it moves from 'unread' to 'read' section instantly
                     setNotifications((prev) =>
                         prev.map((notif) =>
                             notif.notificationId === n.notificationId 
@@ -54,7 +58,7 @@ export default function AllNotificationsPage() {
     };
 
     const filteredNotifications = notifications.filter(n => {
-        const title = ((n as any).title || "").toLowerCase(); 
+        const title = (n.title || "").toLowerCase(); 
         const message = n.message.toLowerCase();
         const query = searchQuery.toLowerCase();
 
@@ -66,23 +70,44 @@ export default function AllNotificationsPage() {
         return matchesSearch && matchesTab;
     });
 
-    const handleDelete = async (e: React.MouseEvent, id: string) => {
-        e.stopPropagation(); // Prevent opening the modal when clicking delete
+    // Step 1: Intercept click and open confirmation modal
+    const initiateDelete = (e: React.MouseEvent, id: string) => {
+        e.stopPropagation(); 
+        setDeleteConfirmation(id);
+    };
+
+    // Step 2: Run actual delete logic if user confirms
+    const handleConfirmDelete = async () => {
+        if (!deleteConfirmation) return;
+        
+        const id = deleteConfirmation;
+        // Close the modal right away
+        setDeleteConfirmation(null);
+
         try {
             await notificationService.delete(id); 
             setNotifications(prev => prev.filter(n => n.notificationId !== id));
+            
+            // Trigger the success slide-in toast popup
+            setToast({ show: true, message: "Notification deleted successfully" });
+            
+            // Hide the toast after 3 seconds
+            setTimeout(() => {
+                setToast(null);
+            }, 3000);
+
         } catch (error) {
             console.error("Failed to delete notification:", error);
         }
     };
 
     return (
-        <div className="min-h-screen bg-gray-50/50 p-8">
+        <div className="min-h-screen bg-gray-50/50 p-8 relative overflow-x-hidden">
             <div className="max-w-5xl mx-auto space-y-6">
                 {/* Back button */}
                 <button 
                     onClick={() => router.back()}
-                    className="group flex items-center gap-2 text-[#953002] hover:opacity-80 transition-all mb-[-8px]"
+                    className="group flex items-center gap-2 text-[#953002] hover:opacity-80 transition-all mb-4"
                 >
                     <ArrowLeft className="h-5 w-5" />
                     <span className="text-xl font-medium">Back</span>
@@ -146,10 +171,10 @@ export default function AllNotificationsPage() {
                                 <div className="flex-1 space-y-1">
                                     <div className="flex justify-between items-start">
                                         <h3 className={`text-sm ${n.isRead ? 'font-medium text-gray-500' : 'font-bold text-gray-800'}`}>
-                                            {(n as any).title} 
+                                            {n.title} 
                                         </h3>
                                         <button 
-                                            onClick={(e) => handleDelete(e, n.notificationId)}
+                                            onClick={(e) => initiateDelete(e, n.notificationId)}
                                             className="text-red-500 hover:text-red-700 transition-colors p-1"
                                         >
                                             <Trash2 className="h-4 w-4" />
@@ -188,7 +213,7 @@ export default function AllNotificationsPage() {
                                 </div>
                                 <div>
                                     <h2 className="text-lg font-bold text-gray-900">
-                                        {(selectedNotification as any).title || "Notification"}
+                                        {selectedNotification.title || "Notification"}
                                     </h2>
                                     <p className="text-xs text-gray-500">Document Notification</p>
                                 </div>
@@ -209,6 +234,60 @@ export default function AllNotificationsPage() {
                                 </button>
                             </div>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Confirmation Pop-up Modal for Deletion */}
+            {deleteConfirmation && (
+                <div
+                    className="fixed inset-0 z-[105] flex items-center justify-center bg-black/50 backdrop-blur-sm"
+                    onClick={() => setDeleteConfirmation(null)}
+                >
+                    <div
+                        className="w-[380px] bg-white rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="p-6 text-center">
+                            <div className="h-12 w-12 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-4 border border-red-100">
+                                <AlertTriangle className="h-6 w-6 text-red-600" />
+                            </div>
+                            
+                            <h2 className="text-lg font-bold text-gray-900 mb-2">
+                                Delete Notification?
+                            </h2>
+                            <p className="text-sm text-gray-500 mb-6">
+                                Are you sure you want to delete this notification? This action cannot be undone.
+                            </p>
+
+                            <div className="flex justify-center gap-3">
+                                <button
+                                    onClick={() => setDeleteConfirmation(null)}
+                                    className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-slate-100 rounded-md transition-colors min-w-[80px]"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={handleConfirmDelete}
+                                    className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md transition-colors min-w-[80px] shadow-sm"
+                                >
+                                    Delete
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Slide-in Pop-up Toast Element */}
+            {toast && (
+                <div className="fixed top-6 right-6 z-[110] flex items-center gap-3 bg-orange-50 border border-orange-100 rounded-xl px-5 py-4 shadow-xl animate-slide-in-out w-80">
+                    <div className="h-8 w-8 rounded-full bg-orange-100 flex items-center justify-center shrink-0">
+                        <CheckCircle2 className="h-5 w-5 text-[#953002]" />
+                    </div>
+                    <div className="flex-1">
+                        <p className="text-sm font-semibold text-gray-800">Success</p>
+                        <p className="text-xs text-gray-600 mt-0.5">{toast.message}</p>
                     </div>
                 </div>
             )}

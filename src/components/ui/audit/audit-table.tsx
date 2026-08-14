@@ -28,13 +28,23 @@ type Props = {
     logs: AuditLog[];
 };
 
-const AuditTable = forwardRef<any, Props>(function AuditTable({ logs = [] }, ref) {
+export interface AuditTableRef {
+    exportToCSV: () => void;
+    exportToPDF: () => void;
+}
 
-    // --- Export Logic ---
+const AuditTable = forwardRef<AuditTableRef, Props>(function AuditTable({ logs = [] }, ref) {
+
+    // Sort logs so that the most recent entries are at the top
+    const sortedLogs = [...logs].sort((a, b) => {
+        return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+    });
+
+    // Export Logic
     const exportToCSV = () => {
-        if (!logs || logs.length === 0) return;
-        const headers = ["User", "Action", "Entity", "Timestamp", "Status"];
-        const rows = logs.map(log => [
+        if (!sortedLogs || sortedLogs.length === 0) return;
+        const headers = ["User", "Action", "Entity", "Timestamp", "IP Address", "Status"];
+        const rows = sortedLogs.map(log => [
             log.user_id,
             log.action,
             log.entity_id,
@@ -55,10 +65,11 @@ const AuditTable = forwardRef<any, Props>(function AuditTable({ logs = [] }, ref
     };
 
     const exportToPDF = () => {
+        if (!sortedLogs || sortedLogs.length === 0) return;
         const doc = new jsPDF();
         doc.text("Audit Logs Report", 14, 15);
         const tableColumn = ["User", "Action", "Entity", "Timestamp", "IP Address", "Status"];
-        const tableRows = logs.map(log => [
+        const tableRows = sortedLogs.map(log => [
             log.user_id,
             log.action,
             log.entity_id,
@@ -84,7 +95,7 @@ const AuditTable = forwardRef<any, Props>(function AuditTable({ logs = [] }, ref
 
     return (
         <div className="rounded-md border bg-card">
-            <h6 className="text-lg font-semibold p-4 pb-0">Activity log - {logs.length} entries</h6>
+            <h6 className="text-lg font-semibold p-4 pb-0">Activity log - {sortedLogs.length} entries</h6>
             <Table>
                 <TableHeader>
                     <TableRow>
@@ -97,12 +108,12 @@ const AuditTable = forwardRef<any, Props>(function AuditTable({ logs = [] }, ref
                     </TableRow>
                 </TableHeader>
                 <TableBody>
-                   {!Array.isArray(logs) || logs.length === 0 ? (
-        <TableRow>
-            <TableCell colSpan={6} className="text-center py-4">No logs available.</TableCell>
-        </TableRow>
-    ) : (
-                        logs.map((log) => (
+                    {!Array.isArray(sortedLogs) || sortedLogs.length === 0 ? (
+                        <TableRow>
+                            <TableCell colSpan={6} className="text-center py-4">No logs available.</TableCell>
+                        </TableRow>
+                    ) : (
+                        sortedLogs.map((log) => (
                             <TableRow key={log.log_id}>
                                 <TableCell className="whitespace-nowrap">{formatAuditDate(log.timestamp)}</TableCell>
                                 <TableCell className="text-xs">{log.user_id}</TableCell>
