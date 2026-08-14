@@ -172,11 +172,23 @@ export const SignatureWorkspace: React.FC = () => {
                 size={{ width: placement.width, height: placement.height }}
                 position={{ x: placement.x, y: placement.y }}
                 bounds="parent" 
+                
+                // 🔥 FIXED: Functional State Update ensures the drag updates correctly
                 onDragStop={(e, d) => {
-                  setPlacements(placements.map((p) => (p.id === placement.id ? { ...p, x: d.x, y: d.y } : p)));
+                  setPlacements((prev) => 
+                    prev.map((p) => (p.id === placement.id ? { ...p, x: d.x, y: d.y } : p))
+                  );
                 }}
+                
+                // 🔥 FIXED: Functional State Update ensures the resize stays consistent
                 onResizeStop={(e, direction, ref, delta, position) => {
-                  setPlacements(placements.map((p) => p.id === placement.id ? { ...p, width: parseInt(ref.style.width), height: parseInt(ref.style.height), ...position } : p));
+                  setPlacements((prev) => 
+                    prev.map((p) => 
+                      p.id === placement.id 
+                        ? { ...p, width: parseInt(ref.style.width), height: parseInt(ref.style.height), ...position } 
+                        : p
+                    )
+                  );
                 }}
                 className="border border-dashed border-amber-600 bg-amber-50/20 group rounded flex items-center justify-center shadow-sm backdrop-blur-[0.5px]"
               >
@@ -195,12 +207,11 @@ export const SignatureWorkspace: React.FC = () => {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onSave={async (data) => {
-          // data now contains { dataUrl, type } from the modal
           setSavedSignature(data.dataUrl);
           try {
             await signatureService.saveSignature(mockUserId, {
               label: "My Signature Snapshot",
-              signatureType: data.type, // 👈 Dynamically uses DRAW, TYPE, or UPLOAD correctly!
+              signatureType: data.type, 
               signatureDataUrl: data.dataUrl,
               isDefault: true
             });
