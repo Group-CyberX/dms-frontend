@@ -96,7 +96,7 @@ export default function MainLayout({
     }
 
     if (!token) {
-      router.replace("/login");
+      router.replace(`/login?redirect=${encodeURIComponent(pathname)}`);
       return;
     }
 
@@ -209,6 +209,11 @@ export default function MainLayout({
   if (!hasHydrated) {
     return null;
   }
+
+  if (!token) {
+    return null;
+  }
+
 
   return (
     <SidebarProvider>

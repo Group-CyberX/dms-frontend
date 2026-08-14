@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useState, useEffect, useCallback } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useDropzone } from 'react-dropzone';
 import { Button } from '@/components/ui/button';
-import { getDocument, getDocumentVersions, Document, DocumentVersion, getDocumentTags, addTagToDocument, Tag, uploadNewVersion, downloadDocumentVersion, restoreDocumentVersion, deleteDocumentVersion, getWorkflows, WorkflowInstance, getDocumentMetadata, addMetadata, updateMetadata, deleteMetadata, DocumentMetadata } from '@/lib/api-client';
+import { getDocument, getDocumentVersions, Document, DocumentVersion, getDocumentTags, addTagToDocument, Tag, uploadNewVersion, downloadDocumentVersion, restoreDocumentVersion, deleteDocumentVersion, getWorkflows, WorkflowInstance,fetchWithAuth, getDocumentMetadata, addMetadata, updateMetadata, deleteMetadata, DocumentMetadata } from '@/lib/api-client';
 import  ShareDocumentDialog  from '@/components/ui/share/share-document-dialog';
 import { DocumentPreview } from '@/components/ui/DocumentPreview';
 import {
@@ -25,7 +25,9 @@ import {
 export default function DocumentDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const documentId = params.id as string;
+  const taskId = searchParams?.get('taskId');
 
   const [document, setDocument] = useState<Document | null>(null);
   const [versions, setVersions] = useState<DocumentVersion[]>([]);
@@ -114,28 +116,28 @@ export default function DocumentDetailPage() {
           console.log('S3 bucket key:', currentVersion.s3_bucket_key);
 
           const blob = await downloadDocumentVersion(document.document_id, document.current_version_id);
-          
+
           if (!isMounted) {
             // If component unmounted, revoke the URL immediately
             URL.revokeObjectURL(URL.createObjectURL(blob));
             return;
           }
-          
+
           // Revoke previous URL if it exists
           if (previousUrl) {
             URL.revokeObjectURL(previousUrl);
           }
-          
+
           // Extract filename from S3 key, fallback to document.title
-          let fileName = currentVersion.s3_bucket_key 
+          let fileName = currentVersion.s3_bucket_key
             ? getFileNameFromS3Key(currentVersion.s3_bucket_key)
             : document.title;
-          
+
           console.log('Extracted filename:', fileName);
-          
+
           const type = getDocumentType(fileName);
           console.log('Detected type:', type);
-          
+
           const url = URL.createObjectURL(blob);
           previousUrl = url;
           setPreviewUrl(url);
@@ -164,49 +166,142 @@ export default function DocumentDetailPage() {
     };
   }, [document?.current_version_id, document?.document_id, versions]);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        const [docData, versionsData, tagsData, workflowsData, metadataData] = await Promise.all([
-          getDocument(documentId),
-          getDocumentVersions(documentId),
-          getDocumentTags(documentId),
-          getWorkflows(),
-          getDocumentMetadata(documentId).catch(() => []),
-        ]);
-        setDocument(docData);
-        setVersions(versionsData || []);
-        setTags(tagsData || []);
-        setMetadata(metadataData || []);
+  const [taskStatusMessage, setTaskStatusMessage] = useState<string | null>(null);
 
-        // Find latest workflow for this document
-        const workflows = Array.isArray(workflowsData) ? workflowsData as WorkflowInstance[] : [];
-        const docWorkflows = workflows.filter(
-          (w) => String(w.documentId ?? w.document_id ?? '') === String(documentId)
+  const loadDocumentData = useCallback(async (showGlobalLoading = true) => {
+    try {
+      if (showGlobalLoading) {
+        setLoading(true);
+const [docData, versionsData, tagsData, workflowsData, metadataData] = await Promise.all([
+  getDocument(documentId),
+  getDocumentVersions(documentId),
+  getDocumentTags(documentId),
+  getWorkflows(),
+  getDocumentMetadata(documentId).catch(() => []),
+]);
+
+setDocument(docData);
+setVersions(versionsData || []);
+setTags(tagsData || []);
+setMetadata(metadataData || []);
+
+// Find latest workflow for this document
+const workflows = Array.isArray(workflowsData)
+  ? workflowsData as WorkflowInstance[]
+  : [];
+
+const docWorkflows = workflows.filter(
+  (w) => String(w.documentId ?? w.document_id ?? '') === String(documentId)
+);
+
+if (docWorkflows.length > 0) {
+  const latestWorkflow = docWorkflows.reduce((latest, current) =>
+    (current.id && latest.id && current.id > latest.id) ? current : latest
+  );
         );
-        if (docWorkflows.length > 0) {
-          const latestWorkflow = docWorkflows.reduce((latest, current) =>
-            (current.id && latest.id && current.id > latest.id) ? current : latest
-          );
-          setWorkflowStatus(latestWorkflow.status || null);
-        } else {
-          setWorkflowStatus(null);
+        setWorkflowStatus(latestWorkflow.status || null);
+      } else {
+        setWorkflowStatus(null);
+      }
+
+      // If taskId is present, fetch tasks for the document workflows to find the specific task status
+      if (taskId) {
+        const [userMeRes, tasksNestedRes] = await Promise.all([
+          fetchWithAuth('http://localhost:8081/api/users/me'),
+          Promise.all(
+            docWorkflows.map(async (w) => {
+              try {
+                const res = await fetchWithAuth(`http://localhost:8081/api/tasks/instance/${w.id}`);
+                if (res.ok) {
+                  const data = await res.json();
+                  return { workflow: w, tasks: Array.isArray(data) ? data : [] };
+                }
+              } catch (err) {
+                console.error('Error fetching tasks for workflow:', w.id, err);
+              }
+              return { workflow: w, tasks: [] };
+            })
+          )
+        ]);
+
+        let currentUser = null;
+        if (userMeRes.ok) {
+          currentUser = await userMeRes.json();
+        }
+        
+        const tasksNested = tasksNestedRes;
+        
+        let foundTask = null;
+        let foundWorkflow = null;
+        for (const item of tasksNested) {
+          const found = item.tasks.find((t: any) => String(t.id) === String(taskId));
+          if (found) {
+            foundTask = found;
+            foundWorkflow = item.workflow;
+            break;
+          }
         }
 
-        setError(null);
-      } catch (err) {
-        console.error('Error fetching document:', err);
-        setError(err instanceof Error ? err.message : 'Failed to load document');
-      } finally {
+        if (foundTask && foundWorkflow) {
+          const isWorkflowRejected = foundWorkflow.status?.toUpperCase() === 'REJECTED';
+          const isInactive = foundTask.status?.toUpperCase() === 'PENDING';
+          const isApproved = foundTask.status?.toUpperCase() === 'APPROVED';
+          const isRejected = foundTask.status?.toUpperCase() === 'REJECTED';
+
+          const dueDate = foundWorkflow.dueDate ? new Date(foundWorkflow.dueDate) : null;
+          const isOverdue = Boolean(
+            dueDate &&
+              foundWorkflow.status?.toUpperCase() !== 'APPROVED' &&
+              foundWorkflow.status?.toUpperCase() !== 'REJECTED' &&
+              dueDate.getTime() < new Date().setHours(0, 0, 0, 0)
+          );
+
+          const normalize = (value: string | null | undefined) => String(value ?? '').trim().toUpperCase();
+          const isAssignedToMe = currentUser
+            ? String(foundTask.userId) === String(currentUser.userId) ||
+              normalize(foundTask.userId) === normalize(currentUser.role)
+            : true;
+
+          let msg = '';
+          if (isWorkflowRejected && isInactive) {
+            msg = 'Workflow rejected';
+          } else if (isOverdue) {
+            msg = 'Due date expired';
+          } else if (isInactive) {
+            msg = 'Waiting for previous step';
+          } else if (!isAssignedToMe) {
+            msg = 'Waiting for previous step';
+          } else if (isApproved) {
+            msg = 'Task approved';
+          } else if (isRejected) {
+            msg = 'Task rejected';
+          } else if (isWorkflowRejected) {
+            msg = 'Workflow rejected';
+          }
+          setTaskStatusMessage(msg || null);
+        } else {
+          setTaskStatusMessage(null);
+        }
+      } else {
+        setTaskStatusMessage(null);
+      }
+
+      setError(null);
+    } catch (err) {
+      console.error('Error fetching document:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load document');
+    } finally {
+      if (showGlobalLoading) {
         setLoading(false);
       }
-    };
-
-    if (documentId) {
-      fetchData();
     }
-  }, [documentId]);
+  }, [documentId, taskId]);
+
+  useEffect(() => {
+    if (documentId) {
+      loadDocumentData(true);
+    }
+  }, [documentId, loadDocumentData]);
 
   const getFileExtension = (fileName: string): string => {
     const match = fileName.match(/\.(\w+)$/);
@@ -335,10 +430,10 @@ export default function DocumentDetailPage() {
         }
       );
       setVersions([newVersion, ...versions]);
-      
+
       // Update document with new version ID to trigger preview reload
       setDocument({ ...document, current_version_id: newVersion.version_id });
-      
+
       setUploadSuccess('New version uploaded successfully!');
       setUploadDialogOpen(false);
       setNewVersionFile(null);
@@ -446,11 +541,17 @@ export default function DocumentDetailPage() {
       <div className="bg-white border-b border-gray-200">
         <div className="px-6 py-4">
           <button
-            onClick={() => router.back()}
+            onClick={() => {
+              if (taskId) {
+                router.push('/my-tasks');
+              } else {
+                router.push('/documents');
+              }
+            }}
             className="flex items-center gap-2 text-[#953002] hover:text-[#7a2401] mb-4 font-medium"
           >
             <ArrowLeft className="w-4 h-4" />
-            Back to Documents
+            {taskId ? 'Back to My Tasks' : 'Back to Documents'}
           </button>
           <div className="flex items-center justify-between">
             <div className="flex flex-col gap-2">
@@ -458,27 +559,27 @@ export default function DocumentDetailPage() {
             </div>
             <div className="flex gap-3">
               <div className="flex gap-3">
-              <Button 
-                className="bg-[#953002] hover:bg-[#7a2401] text-white"
-                onClick={() => setShareDialogOpen(true)}
-              >
-                <Share2 className="w-4 h-4 mr-2" />
-                Share
-              </Button>
-              <Button 
-                className="bg-[#953002] hover:bg-[#7a2401] text-white"
-                onClick={() => document.current_version_id && handleDownloadVersion(document.current_version_id)}
-              >
-                <Download className="w-4 h-4 mr-2" />
-                Download
-              </Button>
-              <Button 
-                className="bg-[#953002] hover:bg-[#7a2401] text-white"
-                onClick={() => setUploadDialogOpen(true)}
-              >
-                <Upload className="w-4 h-4 mr-2" />
-                New Version
-              </Button>
+                <Button
+                  className="bg-[#953002] hover:bg-[#7a2401] text-white"
+                  onClick={() => setShareDialogOpen(true)}
+                >
+                  <Share2 className="w-4 h-4 mr-2" />
+                  Share
+                </Button>
+                <Button
+                  className="bg-[#953002] hover:bg-[#7a2401] text-white"
+                  onClick={() => document.current_version_id && handleDownloadVersion(document.current_version_id)}
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  Download
+                </Button>
+                <Button
+                  className="bg-[#953002] hover:bg-[#7a2401] text-white"
+                  onClick={() => setUploadDialogOpen(true)}
+                >
+                  <Upload className="w-4 h-4 mr-2" />
+                  New Version
+                </Button>
               </div>
             </div>
           </div>
@@ -487,7 +588,7 @@ export default function DocumentDetailPage() {
 
       <div className="p-6">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2">
+          <div className="lg:col-span-2 space-y-6">
             <div className="bg-white rounded-lg shadow-sm p-8">
               {previewLoading ? (
                 <div className="flex items-center justify-center h-96">
@@ -500,6 +601,18 @@ export default function DocumentDetailPage() {
                 <DocumentPreview url={previewUrl} type={previewType} title={document.title} />
               )}
             </div>
+
+            {/* Approval Actions Section - Only shown when taskId is present */}
+            {taskId && document && (
+              <ApprovalActions
+                taskId={parseInt(taskId, 10)}
+                documentName={document.title}
+                statusMessage={taskStatusMessage}
+                onApprovalComplete={() => {
+                  loadDocumentData(false);
+                }}
+              />
+            )}
           </div>
 
           <div className="space-y-6">
@@ -653,11 +766,10 @@ export default function DocumentDetailPage() {
                 {versions.map((version) => (
                   <div
                     key={version.version_id}
-                    className={`p-3 rounded-lg border ${
-                      version.version_id === document.current_version_id
-                        ? 'border-[#953002] bg-orange-50'
-                        : 'border-gray-200 bg-gray-50'
-                    }`}
+                    className={`p-3 rounded-lg border ${version.version_id === document.current_version_id
+                      ? 'border-[#953002] bg-orange-50'
+                      : 'border-gray-200 bg-gray-50'
+                      }`}
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
@@ -675,7 +787,7 @@ export default function DocumentDetailPage() {
                         </p>
                       </div>
                       <div className="flex gap-2">
-                        <button 
+                        <button
                           onClick={() => handleDownloadVersion(version.version_id)}
                           disabled={downloadingVersionId === version.version_id}
                           className="p-1 hover:bg-gray-200 rounded transition disabled:opacity-50 disabled:cursor-not-allowed"
@@ -688,7 +800,7 @@ export default function DocumentDetailPage() {
                           )}
                         </button>
                         {version.version_id !== document.current_version_id && (
-                          <button 
+                          <button
                             onClick={() => handleRestoreVersion(version.version_id)}
                             disabled={restoringVersionId === version.version_id}
                             className="p-1 hover:bg-gray-200 rounded transition disabled:opacity-50 disabled:cursor-not-allowed"
@@ -754,11 +866,10 @@ export default function DocumentDetailPage() {
               {/* Drag and Drop Zone */}
               <div
                 {...getRootProps()}
-                className={`border-2 border-dashed rounded-lg p-8 text-center transition cursor-pointer ${
-                  isDragActive
-                    ? 'border-[#953002] bg-amber-50'
-                    : 'border-gray-300 hover:border-[#953002]'
-                }`}
+                className={`border-2 border-dashed rounded-lg p-8 text-center transition cursor-pointer ${isDragActive
+                  ? 'border-[#953002] bg-amber-50'
+                  : 'border-gray-300 hover:border-[#953002]'
+                  }`}
               >
                 <input {...getInputProps()} />
                 <Upload className="w-10 h-10 mx-auto text-gray-400 mb-3" />
