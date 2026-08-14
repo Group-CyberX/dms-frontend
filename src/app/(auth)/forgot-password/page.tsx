@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label"
 import { ArrowLeft } from "lucide-react"
 import Link from "next/link"
 import { useState } from "react";
+import toast from "react-hot-toast";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
@@ -28,11 +29,11 @@ export default function ForgotPasswordPage() {
 
     console.log(result);
 
-    alert("Reset link sent successfully");
+    toast.success("Reset link sent successfully");
 
   } catch (error) {
     console.error(error);
-    alert("Error sending reset link");
+    toast.error("Error sending reset link");
   }
 };
 

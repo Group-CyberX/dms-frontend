@@ -55,6 +55,7 @@ async function refreshAccessToken(): Promise<boolean> {
           accessToken: data.accessToken,
           refreshToken: data.refreshToken || refreshToken,
           email: data.email || store.email || "",
+          userName: data.username || store.userName || "",
           role: data.role || store.role || "",
           permissions: data.permissions || store.permissions || {},
         });
@@ -1194,6 +1195,63 @@ export async function updateRolePermissions(
   return response.json();
 }
 
+export async function deleteRole(roleId: string): Promise<void> {
+  const response = await fetchWithAuth(`${ADMIN_API_BASE_URL}/roles/${roleId}`, {
+    method: "DELETE",
+    headers: {
+      "Content-Type": "application/json",
+      ...getAuthHeader(),
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to delete role: ${response.statusText}`);
+  }
+}
+
+const handleResponseError = async (res: Response) => {
+  const text = await res.text();
+  try {
+    const data = JSON.parse(text);
+    throw new Error(data.error || data.message || text);
+  } catch (e) {
+    if (e instanceof Error && e.name !== 'SyntaxError') throw e;
+    throw new Error(text || res.statusText || 'API Request Failed');
+  }
+};
+
+export const apiClient = {
+  get: async (url: string, options?: RequestInit) => {
+    const res = await fetchWithAuth(`${API_ROOT_URL}${url}`, { ...options, method: 'GET' });
+    if (!res.ok) await handleResponseError(res);
+    return res.json();
+  },
+  post: async (url: string, body: any, options?: RequestInit) => {
+    const res = await fetchWithAuth(`${API_ROOT_URL}${url}`, {
+      ...options,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...options?.headers },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) await handleResponseError(res);
+    return res.json();
+  },
+  put: async (url: string, body: any, options?: RequestInit) => {
+    const res = await fetchWithAuth(`${API_ROOT_URL}${url}`, {
+      ...options,
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...options?.headers },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) await handleResponseError(res);
+    return res.json();
+  },
+  delete: async (url: string, options?: RequestInit) => {
+    const res = await fetchWithAuth(`${API_ROOT_URL}${url}`, { ...options, method: 'DELETE' });
+    if (!res.ok) await handleResponseError(res);
+    return res.json();
+  },
+};
 export interface SearchHistoryItem {
   searchId: string;
   query: string;

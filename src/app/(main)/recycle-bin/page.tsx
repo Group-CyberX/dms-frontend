@@ -24,10 +24,11 @@ import {
 } from '@/lib/api-client';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/auth-store';
+import { hasPermission } from '@/lib/access-control';
 
 export default function RecycleBinPage() {
   const router = useRouter();
-  const { userName } = useAuthStore();
+  const { userName, role, permissions } = useAuthStore();
   const [deletedDocuments, setDeletedDocuments] = useState<Document[]>([]);
   const [filteredDocuments, setFilteredDocuments] = useState<Document[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -480,22 +481,26 @@ export default function RecycleBinPage() {
                 />
               </div>
               <div className="flex gap-2">
-                <Button
-                  onClick={handleRestoreSelected}
-                  disabled={selectedIds.size === 0 || actionLoading}
-                  className="bg-gray-200 hover:bg-gray-300 text-black px-4 h-10 rounded-md transition-all"
-                >
-                  <RotateCcw className="w-4 h-4 mr-2" />
-                  Restore ({selectedIds.size})
-                </Button>
-                <Button
-                  onClick={handlePermanentlyDeleteSelected}
-                  disabled={selectedIds.size === 0 || actionLoading}
-                  className="bg-red-600 hover:bg-red-700 text-white px-4 h-10 rounded-md transition-all"
-                >
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Delete Permanently
-                </Button>
+                {hasPermission(permissions, role, "canRestoreRecycleBin") && (
+                  <Button
+                    onClick={handleRestoreSelected}
+                    disabled={selectedIds.size === 0 || actionLoading}
+                    className="bg-gray-200 hover:bg-gray-300 text-black px-4 h-10 rounded-md transition-all"
+                  >
+                    <RotateCcw className="w-4 h-4 mr-2" />
+                    Restore ({selectedIds.size})
+                  </Button>
+                )}
+                {hasPermission(permissions, role, "canPermanentlyDeleteRecycleBin") && (
+                  <Button
+                    onClick={handlePermanentlyDeleteSelected}
+                    disabled={selectedIds.size === 0 || actionLoading}
+                    className="bg-red-600 hover:bg-red-700 text-white px-4 h-10 rounded-md transition-all"
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Delete Permanently
+                  </Button>
+                )}
               </div>
             </div>
 
@@ -599,22 +604,26 @@ export default function RecycleBinPage() {
                           </td>
                           <td className="py-3 px-4">
                             <div className="flex items-center gap-2">
-                              <button
-                                onClick={() => handleRestoreOne(doc.document_id, doc.title)}
-                                disabled={actionLoading}
-                                className="p-1 hover:bg-blue-100 rounded transition disabled:opacity-50"
-                                title="Restore"
-                              >
-                                <RotateCcw className="w-4 h-4 text-blue-600" />
-                              </button>
-                              <button
-                                onClick={() => handlePermanentlyDeleteOne(doc.document_id, doc.title)}
-                                disabled={actionLoading}
-                                className="p-1 hover:bg-red-100 rounded transition disabled:opacity-50"
-                                title="Delete Permanently"
-                              >
-                                <Trash2 className="w-4 h-4 text-red-600" />
-                              </button>
+                              {hasPermission(permissions, role, "canRestoreRecycleBin") && (
+                                <button
+                                  onClick={() => handleRestoreOne(doc.document_id, doc.title)}
+                                  disabled={actionLoading}
+                                  className="p-1 hover:bg-blue-100 rounded transition disabled:opacity-50"
+                                  title="Restore"
+                                >
+                                  <RotateCcw className="w-4 h-4 text-blue-600" />
+                                </button>
+                              )}
+                              {hasPermission(permissions, role, "canPermanentlyDeleteRecycleBin") && (
+                                <button
+                                  onClick={() => handlePermanentlyDeleteOne(doc.document_id, doc.title)}
+                                  disabled={actionLoading}
+                                  className="p-1 hover:bg-red-100 rounded transition disabled:opacity-50"
+                                  title="Delete Permanently"
+                                >
+                                  <Trash2 className="w-4 h-4 text-red-600" />
+                                </button>
+                              )}
                             </div>
                           </td>
                         </tr>

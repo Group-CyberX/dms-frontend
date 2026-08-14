@@ -54,7 +54,7 @@ export default function NavigationSideBar() {
     { title: "Recycle Bin", url: "/recycle-bin", icon: <Trash2 size={18} />, feature: "recycleBin" },
     { title: "Audit Logs", url: "/audit", icon: <ScrollText size={18} />, feature: "auditLogs" },
     { title: "ERP Integration", url: "/erp", icon: <Link2 size={18} />, feature: "erpIntegration" },
-    { title: "Manage Policies", url: "/policies", icon: <FolderCog size={18} />, feature: "roleManagement" },
+    { title: "Manage Policies", url: "/policies", icon: <FolderCog size={18} />, feature: "policies" },
     { title: "User Management", url: "/user-mgt", icon: <Users size={18} />, feature: "userManagement" },
     { title: "Role Management", url: "/role-mgt", icon: <Shield size={18} />, feature: "roleManagement" },
     { title: "System Health", url: "/system-health", icon: <Activity size={18} />, feature: "systemHealth" },

@@ -8,7 +8,7 @@ import AuditRetention from "@/components/ui/audit/audit-retention";
 import { auditService } from "@/lib/auditService";
 
 export default function AuditPage() {
-    const tableRef = useRef<{ exportToCSV: () => void; exportToPDF?: () => void }>(null);
+    const tableRef = useRef<AuditTableRef>(null);
     const [logs, setLogs] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
