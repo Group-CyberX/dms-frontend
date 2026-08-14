@@ -19,7 +19,7 @@ interface Placement {
   width: number;        // Box width in pixels
   height: number;       // Box height in pixels
   signatureUrl: string; // Base64 data URL or SVG of the signature
-  page: number;         // 👈 Tracks which page number this signature belongs to
+  page: number;         //  Tracks which page number this signature belongs to
 }
 
 /**
