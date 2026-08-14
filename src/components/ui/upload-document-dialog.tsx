@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { uploadDocument, getFolders, Folder } from '@/lib/api-client';
 import { useMultipartUpload } from '@/hooks/use-multipart-upload';
@@ -184,7 +184,6 @@ export function UploadDocumentDialog({
           // Step 1: Initiate
           const initResponse = await initiateUpload(file, {
             title: documentName,
-            category: category || undefined,
             tags: tags || undefined,
             description: description || undefined,
           });

@@ -6,6 +6,7 @@ import { useDropzone } from 'react-dropzone';
 import { Button } from '@/components/ui/button';
 import { getDocument, getDocumentVersions, Document, DocumentVersion, getDocumentTags, addTagToDocument, Tag, uploadNewVersion, downloadDocumentVersion, restoreDocumentVersion, deleteDocumentVersion, getWorkflows, WorkflowInstance,fetchWithAuth, getDocumentMetadata, addMetadata, updateMetadata, deleteMetadata, DocumentMetadata } from '@/lib/api-client';
 import  ShareDocumentDialog  from '@/components/ui/share/share-document-dialog';
+import ApprovalActions from '@/components/ui/workflow/approval-actions';
 import { DocumentPreview } from '@/components/ui/DocumentPreview';
 import {
   ArrowLeft,
@@ -172,32 +173,33 @@ export default function DocumentDetailPage() {
     try {
       if (showGlobalLoading) {
         setLoading(true);
-const [docData, versionsData, tagsData, workflowsData, metadataData] = await Promise.all([
-  getDocument(documentId),
-  getDocumentVersions(documentId),
-  getDocumentTags(documentId),
-  getWorkflows(),
-  getDocumentMetadata(documentId).catch(() => []),
-]);
+      }
 
-setDocument(docData);
-setVersions(versionsData || []);
-setTags(tagsData || []);
-setMetadata(metadataData || []);
+      const [docData, versionsData, tagsData, workflowsData, metadataData] = await Promise.all([
+        getDocument(documentId),
+        getDocumentVersions(documentId),
+        getDocumentTags(documentId),
+        getWorkflows(),
+        getDocumentMetadata(documentId).catch(() => []),
+      ]);
 
-// Find latest workflow for this document
-const workflows = Array.isArray(workflowsData)
-  ? workflowsData as WorkflowInstance[]
-  : [];
+      setDocument(docData);
+      setVersions(versionsData || []);
+      setTags(tagsData || []);
+      setMetadata(metadataData || []);
 
-const docWorkflows = workflows.filter(
-  (w) => String(w.documentId ?? w.document_id ?? '') === String(documentId)
-);
+      // Find latest workflow for this document
+      const workflows = Array.isArray(workflowsData)
+        ? workflowsData as WorkflowInstance[]
+        : [];
 
-if (docWorkflows.length > 0) {
-  const latestWorkflow = docWorkflows.reduce((latest, current) =>
-    (current.id && latest.id && current.id > latest.id) ? current : latest
-  );
+      const docWorkflows = workflows.filter(
+        (w) => String(w.documentId ?? w.document_id ?? '') === String(documentId)
+      );
+
+      if (docWorkflows.length > 0) {
+        const latestWorkflow = docWorkflows.reduce((latest, current) =>
+          (current.id && latest.id && current.id > latest.id) ? current : latest
         );
         setWorkflowStatus(latestWorkflow.status || null);
       } else {
