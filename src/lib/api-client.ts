@@ -186,6 +186,81 @@ export interface Folder {
   path: string;
 }
 
+export interface FolderTreeNode {
+  folder_id: string;
+  name: string;
+  path: string;
+  parent_folder_id: string | null;
+  documentCount: number;
+  totalSize: number;
+  children: FolderTreeNode[];
+}
+
+/**
+ * Fetch the full nested folder tree for the current user
+ */
+export async function fetchFolderTree(): Promise<FolderTreeNode[]> {
+  const response = await fetchWithAuth(`${API_BASE_URL}/folders/tree`, {
+    headers: getAuthHeader(),
+  });
+
+  if (!response.ok) {
+    let errBody: unknown;
+    try { errBody = await response.json(); } catch { errBody = response.statusText; }
+    throw errBody || response.statusText;
+  }
+
+  return response.json();
+}
+
+/**
+ * Move one or more documents to a target folder (or to root if targetFolderId is null)
+ */
+export async function moveDocuments(req: {
+  documentIds: string[];
+  targetFolderId: string | null;
+}): Promise<{ movedCount: number }> {
+  const response = await fetchWithAuth(`${API_BASE_URL}/documents/move`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeader(),
+    },
+    body: JSON.stringify(req),
+  });
+
+  if (!response.ok) {
+    let errBody: unknown;
+    try { errBody = await response.json(); } catch { errBody = response.statusText; }
+    throw errBody || response.statusText;
+  }
+
+  return response.json();
+}
+
+/**
+ * Fetch documents, optionally scoped to a specific folder.
+ * Pass folderId=null to get all non-deleted documents.
+ */
+export async function fetchDocuments(folderId?: string | null): Promise<Document[]> {
+  const url =
+    folderId != null
+      ? `${API_BASE_URL}/documents?folderId=${encodeURIComponent(folderId)}`
+      : `${API_BASE_URL}/documents`;
+
+  const response = await fetchWithAuth(url, {
+    headers: getAuthHeader(),
+  });
+
+  if (!response.ok) {
+    let errBody: unknown;
+    try { errBody = await response.json(); } catch { errBody = response.statusText; }
+    throw errBody || response.statusText;
+  }
+
+  return response.json();
+}
+
 /**
  * Upload a document with metadata and progress tracking
  */
@@ -439,13 +514,16 @@ export async function addTagToDocument(documentId: string, tagName: string): Pro
 }
 
 /**
- * Create a new folder
+ * Create a new folder. `path` is computed server-side from the parent's
+ * path, so it is not sent — the DTO the backend accepts here only has
+ * `name` and `parentFolderId` (camelCase, unlike the Folders entity used
+ * by update/delete, which is snake_case). Omit parentFolderId to create
+ * a root folder.
  */
-export async function createFolder(name: string, parentFolderId?: string, path?: string): Promise<Folder> {
+export async function createFolder(name: string, parentFolderId?: string): Promise<Folder> {
   const folderData = {
     name,
-    parent_folder_id: parentFolderId || null,
-    path: path || `/${name}`,
+    parentFolderId: parentFolderId || null,
   };
 
   const response = await fetch(`${API_BASE_URL}/folders`, {
@@ -508,7 +586,16 @@ export async function updateFolder(folderId: string, name: string, parentFolderI
 /**
  * Delete a folder
  */
-export async function deleteFolder(folderId: string): Promise<void> {
+export interface FolderDeleteResult {
+  deletedFolderIds: string[];
+  documentsMovedToRecycleBin: number;
+}
+
+/**
+ * Delete a folder. This cascades: every subfolder is deleted too, and every
+ * document inside any of them is moved to the recycle bin (soft delete).
+ */
+export async function deleteFolder(folderId: string): Promise<FolderDeleteResult> {
   const response = await fetch(`${API_BASE_URL}/folders/${folderId}`, {
     method: 'DELETE',
     headers: getAuthHeader(),
@@ -517,6 +604,52 @@ export async function deleteFolder(folderId: string): Promise<void> {
   if (!response.ok) {
     throw new Error(`Failed to delete folder: ${response.statusText}`);
   }
+
+  return response.json();
+}
+
+export interface FolderTrashItem {
+  folderId: string;
+  name: string;
+  path: string;
+  deletedAt: string;
+  documentCount: number;
+  subfolderCount: number;
+}
+
+export interface FolderRestoreResult {
+  restoredFolderIds: string[];
+  documentsRestored: number;
+}
+
+/** List deleted folders (recycle bin), one row per deleted subtree root. */
+export async function getDeletedFolders(): Promise<FolderTrashItem[]> {
+  const response = await fetch(`${API_BASE_URL}/folders/trash`, {
+    headers: getAuthHeader(),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch deleted folders: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Restore a deleted folder. This cascades: every subfolder is restored too,
+ * along with every document that was moved to the recycle bin alongside it.
+ */
+export async function restoreFolder(folderId: string): Promise<FolderRestoreResult> {
+  const response = await fetch(`${API_BASE_URL}/folders/${folderId}/restore`, {
+    method: 'POST',
+    headers: getAuthHeader(),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to restore folder: ${response.statusText}`);
+  }
+
+  return response.json();
 }
 
 /**
