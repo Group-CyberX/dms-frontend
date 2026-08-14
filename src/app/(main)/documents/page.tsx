@@ -22,6 +22,7 @@ import {
 } from '@/lib/api-client';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { useAuthStore } from '@/store/auth-store';
+import { hasPermission } from '@/lib/access-control';
 import { FolderSidebar } from '@/components/FolderSidebar';
 import { FolderNode } from '@/components/FolderNode';
 import {
@@ -311,6 +312,8 @@ export default function DocumentsPage() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const accessToken = useAuthStore((state) => state.accessToken);
+  const role = useAuthStore((state) => state.role);
+  const permissions = useAuthStore((state) => state.permissions);
 
   const folderParam = searchParams.get('folder');
   const selectedFolderId = folderParam ?? null;
@@ -498,13 +501,15 @@ export default function DocumentsPage() {
                   Move selected ({selectedDocIds.size})
                 </Button>
               )}
-              <Button
-                onClick={() => setUploadDialogOpen(true)}
-                className="bg-[#8B2E00] hover:bg-[#7a2401] text-white font-medium h-9 px-5 rounded-md shadow-sm"
-              >
-                <Plus className="w-4 h-4 mr-1.5" />
-                Upload
-              </Button>
+              {hasPermission(permissions, role, "canCreateDocument") && (
+                <Button
+                  onClick={() => setUploadDialogOpen(true)}
+                  className="bg-[#8B2E00] hover:bg-[#7a2401] text-white font-medium h-9 px-5 rounded-md shadow-sm"
+                >
+                  <Plus className="w-4 h-4 mr-1.5" />
+                  Upload
+                </Button>
+              )}
             </div>
           </div>
         </div>
@@ -662,11 +667,19 @@ export default function DocumentsPage() {
                         <td className="py-3 px-4">
                           <div className="flex items-center gap-0.5">
                             <button onClick={() => router.push(`/documents/${doc.document_id}`)} className="p-1.5 hover:bg-gray-100 rounded transition" title="View"><Eye className="w-3.5 h-3.5 text-gray-400" /></button>
-                            <button className="p-1.5 hover:bg-gray-100 rounded transition" title="Edit"><Edit2 className="w-3.5 h-3.5 text-gray-400" /></button>
+                            {hasPermission(permissions, role, "canEditDocument") && (
+                              <button className="p-1.5 hover:bg-gray-100 rounded transition" title="Edit"><Edit2 className="w-3.5 h-3.5 text-gray-400" /></button>
+                            )}
                             <button className="p-1.5 hover:bg-gray-100 rounded transition" title="Download"><Download className="w-3.5 h-3.5 text-gray-400" /></button>
-                            <button onClick={(e) => { e.stopPropagation(); openMoveSheet(doc.document_id); }} className="p-1.5 hover:bg-blue-50 rounded transition" title="Move"><MoveRight className="w-3.5 h-3.5 text-blue-400" /></button>
-                            <button onClick={(e) => { e.stopPropagation(); handleDelete(doc.document_id, doc.title); }} className="p-1.5 hover:bg-red-50 rounded transition" title="Delete"><Trash2 className="w-3.5 h-3.5 text-red-400" /></button>
-                            <button className="p-1.5 hover:bg-gray-100 rounded transition" title="Share"><Share2 className="w-3.5 h-3.5 text-gray-400" /></button>
+                            {hasPermission(permissions, role, "canEditDocument") && (
+                              <button onClick={(e) => { e.stopPropagation(); openMoveSheet(doc.document_id); }} className="p-1.5 hover:bg-blue-50 rounded transition" title="Move"><MoveRight className="w-3.5 h-3.5 text-blue-400" /></button>
+                            )}
+                            {hasPermission(permissions, role, "canDeleteDocument") && (
+                              <button onClick={(e) => { e.stopPropagation(); handleDelete(doc.document_id, doc.title); }} className="p-1.5 hover:bg-red-50 rounded transition" title="Delete"><Trash2 className="w-3.5 h-3.5 text-red-400" /></button>
+                            )}
+                            {hasPermission(permissions, role, "canShareDocument") && (
+                              <button className="p-1.5 hover:bg-gray-100 rounded transition" title="Share"><Share2 className="w-3.5 h-3.5 text-gray-400" /></button>
+                            )}
                           </div>
                         </td>
                       </tr>

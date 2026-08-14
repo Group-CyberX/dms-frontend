@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { fetchWithAuth } from '@/lib/api-client';
+import { useAuthStore } from '@/store/auth-store';
+import { hasPermission } from '@/lib/access-control';
 
 //Represents an approver in the workflow
 interface Approver {
@@ -16,6 +18,9 @@ interface Approver {
 }
 
 export default function WorkflowBuilderPage() {
+  const role = useAuthStore((state) => state.role);
+  const permissions = useAuthStore((state) => state.permissions);
+
   const [documents, setDocuments] = useState<any[]>([]);
   const [templates, setTemplates] = useState<any[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState<boolean>(false);
@@ -600,13 +605,15 @@ export default function WorkflowBuilderPage() {
 
                 {/* Action Buttons */}
                 <div className="flex gap-3 pt-4">
-                  <Button
-                    onClick={handleSubmit}
-                    className="flex-1 bg-[#8B4513] hover:bg-[#A0522D] text-white"
-                    size="lg"
-                  >
-                    Submit Workflow
-                  </Button>
+                  {hasPermission(permissions, role, "canCreateWorkflow") && (
+                    <Button
+                      onClick={handleSubmit}
+                      className="flex-1 bg-[#8B4513] hover:bg-[#A0522D] text-white"
+                      size="lg"
+                    >
+                      Submit Workflow
+                    </Button>
+                  )}
                   <Button
                     onClick={clearForm}
                     variant="outline"

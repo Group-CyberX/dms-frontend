@@ -1,3 +1,7 @@
+import { PERMISSION_CATALOG, type SidebarFeatureKey } from "./permissions";
+
+export type { SidebarFeatureKey };
+
 export type RoleKey =
   | "SYSTEM_ADMIN"
   | "DOCUMENT_ADMIN"
@@ -6,20 +10,6 @@ export type RoleKey =
   | "APPROVER"
   | "END_USER"
   | string;
-
-export type SidebarFeatureKey =
-  | "dashboard"
-  | "documents"
-  | "search"
-  | "myTasks"
-  | "workflows"
-  | "recycleBin"
-  | "auditLogs"
-  | "erpIntegration"
-  | "userManagement"
-  | "roleManagement"
-  | "systemHealth"
-  | "settings";
 
 const DEFAULT_ROLE_FEATURES: Record<string, SidebarFeatureKey[]> = {
   SYSTEM_ADMIN: [
@@ -31,6 +21,7 @@ const DEFAULT_ROLE_FEATURES: Record<string, SidebarFeatureKey[]> = {
     "recycleBin",
     "auditLogs",
     "erpIntegration",
+    "policies",
     "userManagement",
     "roleManagement",
     "systemHealth",
@@ -55,19 +46,38 @@ function cleanRole(role: string | null | undefined): RoleKey {
   return role.toUpperCase().replace(/\s+/g, "_");
 }
 
-function permissionLooksGranted(
-  permissions: Record<string, boolean>,
-  token: string
-): boolean {
-  const normalizedToken = token.toLowerCase().replace(/[^a-z]/g, "");
+/**
+ * Maps each sidebar feature to the permission keys that make it visible.
+ * Built from the catalogue so the keys can never drift from the ones stored
+ * against a role.
+ */
+const FEATURE_VISIBILITY_KEYS = PERMISSION_CATALOG.reduce((acc, group) => {
+  acc[group.feature] = group.visibilityKeys;
+  return acc;
+}, {} as Record<SidebarFeatureKey, string[]>);
 
-  return Object.entries(permissions).some(([key, value]) => {
-    if (!value) return false;
-    const normalizedKey = key.toLowerCase().replace(/[^a-z]/g, "");
-    return normalizedKey.includes(normalizedToken);
-  });
+/**
+ * Checks if a specific sidebar feature should be visible based on the user's
+ * permission map. Exact key lookup only.
+ */
+function hasFeaturePermission(
+  permissions: Record<string, boolean>,
+  feature: SidebarFeatureKey
+): boolean {
+  const requiredKeys = FEATURE_VISIBILITY_KEYS[feature];
+  if (!requiredKeys || requiredKeys.length === 0) return false;
+
+  return requiredKeys.some((key) => permissions[key] === true);
 }
 
+/**
+ * Determines whether a user can access a sidebar feature.
+ *
+ * Priority order:
+ * 1. SYSTEM_ADMIN always has access to everything
+ * 2. If explicit permissions exist (from the role's JSON), check them precisely
+ * 3. Fall back to hardcoded DEFAULT_ROLE_FEATURES
+ */
 export function canAccessFeature(
   feature: SidebarFeatureKey,
   role: string | null,
@@ -75,35 +85,39 @@ export function canAccessFeature(
 ): boolean {
   const normalizedRole = cleanRole(role);
 
+  // SYSTEM_ADMIN always sees everything — prevents locking themselves out
   if (normalizedRole === "SYSTEM_ADMIN") {
     return true;
   }
 
-  // If backend sent explicit permissions, honor them first.
+  // If the backend sent explicit permissions, honor them precisely
   if (Object.keys(permissions).length > 0) {
-    const featureTokens: Record<SidebarFeatureKey, string[]> = {
-      dashboard: ["dashboard"],
-      documents: ["document"],
-      search: ["search"],
-      myTasks: ["task"],
-      workflows: ["workflow"],
-      recycleBin: ["recycle", "delete"],
-      auditLogs: ["audit", "log"],
-      erpIntegration: ["erp", "integration"],
-      userManagement: ["user"],
-      roleManagement: ["role"],
-      systemHealth: ["system", "health"],
-      settings: ["setting"],
-    };
-
-    const tokens = featureTokens[feature];
-    if (tokens.some((token) => permissionLooksGranted(permissions, token))) {
+    if (hasFeaturePermission(permissions, feature)) {
       return true;
     }
+
+    // If permissions exist but this feature has no match, deny it
+    // (don't fall through to defaults — the role has been explicitly configured)
+    return false;
   }
 
+  // No explicit permissions → fall back to role-based defaults
   const roleFeatures = DEFAULT_ROLE_FEATURES[normalizedRole] ?? DEFAULT_ROLE_FEATURES.END_USER;
   return roleFeatures.includes(feature);
+}
+
+/**
+ * Check if the user has a specific granular permission (e.g., "canEditDocument").
+ * Use this within individual pages to show/hide action buttons.
+ */
+export function hasPermission(
+  permissions: Record<string, boolean>,
+  role: string | null,
+  permissionKey: string
+): boolean {
+  if (cleanRole(role) === "SYSTEM_ADMIN") return true;
+
+  return permissions[permissionKey] === true;
 }
 
 export type DashboardVariant =
@@ -145,13 +159,14 @@ export function formatRoleLabel(role: string | null): string {
 export function getFeatureByPath(pathname: string): SidebarFeatureKey | null {
   if (pathname === "/dashboard") return "dashboard";
   if (pathname.startsWith("/documents")) return "documents";
-    if (pathname.startsWith("/share")) return null;
+  if (pathname.startsWith("/share")) return null;
   if (pathname.startsWith("/search")) return "search";
   if (pathname.startsWith("/my-tasks")) return "myTasks";
   if (pathname.startsWith("/workflows")) return "workflows";
   if (pathname.startsWith("/recycle-bin")) return "recycleBin";
   if (pathname.startsWith("/audit")) return "auditLogs";
   if (pathname.startsWith("/erp")) return "erpIntegration";
+  if (pathname.startsWith("/policies")) return "policies";
   if (pathname.startsWith("/user-mgt")) return "userManagement";
   if (pathname.startsWith("/role-mgt")) return "roleManagement";
   if (pathname.startsWith("/system-health")) return "systemHealth";

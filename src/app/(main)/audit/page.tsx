@@ -3,12 +3,12 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import AuditHeader from "@/components/ui/audit/audit-header";
 import AuditFilter from "@/components/ui/audit/audit-filters";
-import AuditTable from "@/components/ui/audit/audit-table";
+import AuditTable, { type AuditTableRef } from "@/components/ui/audit/audit-table";
 import AuditRetention from "@/components/ui/audit/audit-retention";
 import { auditService } from "@/lib/auditService";
 
 export default function AuditPage() {
-    const tableRef = useRef<{ exportToCSV: () => void; exportToPDF?: () => void }>(null);
+    const tableRef = useRef<AuditTableRef>(null);
     const [logs, setLogs] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 

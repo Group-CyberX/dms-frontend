@@ -5,8 +5,22 @@ export interface AuthPayload {
   accessToken: string;
   refreshToken: string;
   email: string;
+  userName?: string;
   role: string;
   permissions: Record<string, boolean>;
+}
+
+let expiryTimeoutId: ReturnType<typeof setTimeout> | null = null;
+
+function getTokenExpiry(token: string): number | null {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const decoded = JSON.parse(atob(parts[1]));
+    return decoded.exp ? decoded.exp * 1000 : null;
+  } catch {
+    return null;
+  }
 }
 
 interface AuthData {
@@ -27,10 +41,13 @@ interface AuthState {
   userName: string | null;
   permissions: Record<string, boolean>;
   hasHydrated: boolean;
+  profilePicture: string | null;
 
   setAuth: (data: AuthPayload) => void;
+  setProfilePicture: (pic: string | null) => void;
   logout: () => void;
   logoutAsync: () => Promise<void>;
+  refreshSession: () => Promise<boolean>;
 }
 
 // Zustand store for managing authentication state across the app
@@ -48,6 +65,7 @@ export const useAuthStore = create<AuthState>()(
       userName: null,
       permissions: {},
       hasHydrated: false,
+      profilePicture: null,
 
       // Set authentication data after login
       setAuth: (data) => {
@@ -55,19 +73,41 @@ export const useAuthStore = create<AuthState>()(
           localStorage.setItem("accessToken", data.accessToken);
           localStorage.setItem("refreshToken", data.refreshToken);
         }
+        
+        // Schedule auto-logout based on access token expiry
+        const expiryTime = getTokenExpiry(data.accessToken);
+        if (expiryTime) {
+          const now = Date.now();
+          const timeUntilExpiry = expiryTime - now - 60000;
+          
+          if (expiryTimeoutId) clearTimeout(expiryTimeoutId);
+          
+          if (timeUntilExpiry > 0) {
+            expiryTimeoutId = setTimeout(() => {
+              console.warn("Access token expired, logging out");
+              useAuthStore.getState().logout();
+            }, timeUntilExpiry);
+          }
+        }
+        
         // Update global state
         set({
           accessToken: data.accessToken,
           refreshToken: data.refreshToken,
           email: data.email,
+          userName: data.userName ?? get().userName ?? null,
           role: data.role,
           permissions: data.permissions ?? {},
           hasHydrated: true,
         });
       },
 
+      setProfilePicture: (pic) => set({ profilePicture: pic }),
+
       // Logout locally by clearing state and storage
       logout: () => {
+        if (expiryTimeoutId) clearTimeout(expiryTimeoutId);
+        
         if (typeof window !== "undefined") {
           localStorage.removeItem("accessToken");
           localStorage.removeItem("refreshToken");
@@ -106,6 +146,40 @@ export const useAuthStore = create<AuthState>()(
         // Clear local auth state
         get().logout();
       },
+
+      // Refresh the current session to pick up latest role/permissions from the database.
+      // Call this after updating role permissions so sidebar & route guards reflect changes.
+      refreshSession: async () => {
+        const currentRefreshToken = get().refreshToken;
+        if (!currentRefreshToken) return false;
+
+        try {
+          const response = await fetch('http://localhost:8081/auth/refresh', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refreshToken: currentRefreshToken }),
+          });
+
+          if (!response.ok) return false;
+
+          const data = await response.json();
+          if (data.accessToken) {
+            get().setAuth({
+              accessToken: data.accessToken,
+              refreshToken: data.refreshToken || currentRefreshToken,
+              email: data.email || get().email || '',
+              userName: data.username || get().userName || '',
+              role: data.role || get().role || '',
+              permissions: data.permissions || {},
+            });
+            return true;
+          }
+        } catch (err) {
+          console.error('Failed to refresh session:', err);
+        }
+
+        return false;
+      },
     }),
     {
       name: "dms-auth-store",
@@ -115,6 +189,16 @@ export const useAuthStore = create<AuthState>()(
           state.hasHydrated = true;
         }
       },
+      partialize: (state) => ({
+        accessToken: state.accessToken,
+        refreshToken: state.refreshToken,
+        email: state.email,
+        role: state.role,
+        userId: state.userId,
+        userName: state.userName,
+        permissions: state.permissions,
+        // profilePicture is omitted so we don't save huge base64 strings in localStorage
+      }),
     }
   )
 );
