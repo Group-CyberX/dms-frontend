@@ -1,354 +1,672 @@
-﻿'use client';
+'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { UploadDocumentDialog } from '@/components/ui/upload-document-dialog';
-import { Plus, Folder, Eye, Download, Edit2, FileText, Loader, Trash2, Share2 } from 'lucide-react';
-import { getDocuments, Document, getFolders, Folder as FolderType, getWorkflows, WorkflowInstance, deleteDocument } from '@/lib/api-client';
-import { useRouter } from 'next/navigation';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import {
+  Plus, Eye, Download, Edit2, FileText, Loader, Trash2, Share2, MoveRight,
+  LayoutGrid, List, MoreHorizontal, Lock,
+} from 'lucide-react';
+import {
+  getDocuments,
+  getFolders,
+  Document,
+  Folder,
+  getWorkflows,
+  WorkflowInstance,
+  deleteDocument,
+  moveDocuments,
+  FolderTreeNode,
+} from '@/lib/api-client';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { useAuthStore } from '@/store/auth-store';
+import { FolderSidebar } from '@/components/FolderSidebar';
+import { FolderNode } from '@/components/FolderNode';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+type ViewMode = 'list' | 'grid';
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/** Build nested tree from flat folder + doc lists */
+function buildTree(
+  folders: Folder[],
+  documents: Document[],
+  parentId: string | null = null
+): FolderTreeNode[] {
+  return folders
+    .filter((f) => (f.parent_folder_id ?? null) === parentId)
+    .map((f) => ({
+      folder_id: f.folder_id,
+      name: f.name,
+      path: f.path,
+      parent_folder_id: f.parent_folder_id,
+      documentCount: documents.filter(
+        (d) => !d.is_deleted && d.folder_id === f.folder_id
+      ).length,
+      totalSize: 0,
+      children: buildTree(folders, documents, f.folder_id),
+    }));
+}
+
+function formatDate(dateString: string) {
+  try {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  } catch {
+    return dateString;
+  }
+}
+
+function getFileType(filename: string) {
+  return filename.split('.').pop()?.toUpperCase() || 'FILE';
+}
+
+function getFileColor(filename: string) {
+  const ext = filename.split('.').pop()?.toLowerCase() || '';
+  if (['pdf'].includes(ext)) return 'bg-red-100 text-red-600';
+  if (['doc', 'docx'].includes(ext)) return 'bg-blue-100 text-blue-600';
+  if (['xls', 'xlsx', 'csv'].includes(ext)) return 'bg-green-100 text-green-600';
+  if (['ppt', 'pptx'].includes(ext)) return 'bg-orange-100 text-orange-600';
+  if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) return 'bg-purple-100 text-purple-600';
+  if (['zip', 'rar', '7z'].includes(ext)) return 'bg-yellow-100 text-yellow-600';
+  return 'bg-slate-100 text-slate-600';
+}
+
+// ── Status badge ──────────────────────────────────────────────────────────────
+
+function StatusBadge({ status }: { status: string }) {
+  const norm = status.toUpperCase();
+  if (norm === 'PENDING_APPROVAL')
+    return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-yellow-100 text-yellow-700">Pending</span>;
+  if (norm === 'APPROVED')
+    return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-green-100 text-green-700">Approved</span>;
+  if (norm === 'REJECTED')
+    return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-red-100 text-red-700">Rejected</span>;
+  return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-500">{status || 'None'}</span>;
+}
+
+// ── Move sheet ────────────────────────────────────────────────────────────────
+
+interface MoveSheetProps {
+  open: boolean;
+  onClose: () => void;
+  onMove: (targetFolderId: string | null) => Promise<void>;
+}
+
+function MoveSheet({ open, onClose, onMove }: MoveSheetProps) {
+  const [tree, setTree] = useState<FolderTreeNode[]>([]);
+  const [loadingTree, setLoadingTree] = useState(false);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [moving, setMoving] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setLoadingTree(true);
+    setSelected(null);
+    Promise.all([getFolders(), getDocuments()])
+      .then(([folders, docs]) => {
+        const flds: Folder[] = Array.isArray(folders) ? folders : [];
+        const documents: Document[] = Array.isArray(docs) ? docs : [];
+        setTree(buildTree(flds, documents, null));
+      })
+      .catch(() => setTree([]))
+      .finally(() => setLoadingTree(false));
+  }, [open]);
+
+  const handleConfirm = async () => {
+    setMoving(true);
+    try {
+      await onMove(selected);
+      onClose();
+    } finally {
+      setMoving(false);
+    }
+  };
+
+  const noop = async () => {};
+
+  return (
+    <Sheet open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <SheetContent side="right" className="w-72 flex flex-col gap-0 p-0">
+        <SheetHeader className="px-5 py-4 border-b">
+          <SheetTitle className="text-base">Move to folder</SheetTitle>
+        </SheetHeader>
+
+        <div className="flex-1 overflow-y-auto px-3 py-3 space-y-0.5">
+          {loadingTree ? (
+            <p className="text-xs text-slate-400 px-2 py-4">Loading folders…</p>
+          ) : (
+            <>
+              <div
+                onClick={() => setSelected(null)}
+                className={`flex items-center gap-2 rounded-md px-2 py-1.5 cursor-pointer text-xs font-semibold transition-colors ${
+                  selected === null ? 'bg-[#8B2E00] text-white' : 'text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                <FileText size={14} />
+                All Documents (root)
+              </div>
+              {tree.map((node) => (
+                <FolderNode
+                  key={node.folder_id}
+                  node={node}
+                  depth={0}
+                  selectedId={selected}
+                  onSelect={setSelected}
+                  onCreateSubfolder={noop}
+                  onRequestDelete={() => {}}
+                  onRenameFolder={noop}
+                />
+              ))}
+            </>
+          )}
+        </div>
+
+        <div className="border-t px-5 py-3 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 rounded transition"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleConfirm}
+            disabled={moving}
+            className="px-4 py-1.5 text-sm bg-[#8B2E00] text-white rounded hover:bg-[#7a2401] disabled:opacity-50 transition"
+          >
+            {moving ? 'Moving…' : 'Move here'}
+          </button>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+// ── Document card (grid view) ─────────────────────────────────────────────────
+
+interface DocCardProps {
+  doc: Document;
+  selected: boolean;
+  status: string;
+  onToggle: () => void;
+  onView: () => void;
+  onDelete: () => void;
+  onMove: () => void;
+}
+
+function DocCard({ doc, selected, status, onToggle, onView, onDelete, onMove }: DocCardProps) {
+  const fileType = getFileType(doc.title);
+  const colorClass = getFileColor(doc.title);
+
+  return (
+    <div
+      className={`group relative bg-white rounded-xl border transition-all duration-150 cursor-pointer flex flex-col ${
+        selected
+          ? 'border-[#8B2E00] ring-2 ring-[#8B2E00]/20 shadow-md'
+          : 'border-gray-200 hover:border-gray-300 hover:shadow-md'
+      }`}
+      onClick={onView}
+    >
+      {/* Checkbox */}
+      <div
+        className="absolute top-2.5 left-2.5 z-10"
+        onClick={(e) => { e.stopPropagation(); onToggle(); }}
+      >
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={onToggle}
+          onClick={(e) => e.stopPropagation()}
+          className="rounded border-gray-300 w-3.5 h-3.5"
+        />
+      </div>
+
+      {/* Actions dropdown */}
+      <div
+        className="absolute top-2 right-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button className="p-1 rounded-md bg-white border border-gray-200 shadow-sm hover:bg-gray-50 transition">
+              <MoreHorizontal size={13} className="text-gray-500" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-36 text-xs">
+            <DropdownMenuItem className="gap-2 text-xs" onClick={onView}>
+              <Eye size={12} /> View
+            </DropdownMenuItem>
+            <DropdownMenuItem className="gap-2 text-xs">
+              <Edit2 size={12} /> Edit
+            </DropdownMenuItem>
+            <DropdownMenuItem className="gap-2 text-xs">
+              <Download size={12} /> Download
+            </DropdownMenuItem>
+            <DropdownMenuItem className="gap-2 text-xs" onClick={onMove}>
+              <MoveRight size={12} /> Move
+            </DropdownMenuItem>
+            <DropdownMenuItem className="gap-2 text-xs">
+              <Share2 size={12} /> Share
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className="gap-2 text-xs text-red-600 focus:text-red-600"
+              onClick={onDelete}
+            >
+              <Trash2 size={12} /> Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+
+      {/* File icon area */}
+      <div className="flex items-center justify-center h-28 rounded-t-xl bg-gray-50 border-b border-gray-100">
+        <div className={`w-14 h-14 rounded-xl flex flex-col items-center justify-center gap-1 ${colorClass}`}>
+          <FileText size={22} />
+          <span className="text-[9px] font-bold tracking-wide">{fileType}</span>
+        </div>
+      </div>
+
+      {/* Card body */}
+      <div className="p-3 flex flex-col gap-1.5 flex-1">
+        <p className="text-xs font-semibold text-gray-800 truncate leading-tight" title={doc.title}>
+          {doc.title}
+        </p>
+
+        <div className="flex items-center justify-between gap-1 mt-auto pt-1">
+          <StatusBadge status={status} />
+          {doc.is_locked && (
+            <span className="flex items-center gap-0.5 text-[10px] text-red-500">
+              <Lock size={9} /> Locked
+            </span>
+          )}
+        </div>
+
+        <p className="text-[10px] text-gray-400">{formatDate(doc.created_at)}</p>
+      </div>
+    </div>
+  );
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function DocumentsPage() {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const accessToken = useAuthStore((state) => state.accessToken);
+
+  const folderParam = searchParams.get('folder');
+  const selectedFolderId = folderParam ?? null;
+
+  const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [documents, setDocuments] = useState<Document[]>([]);
-  const [folders, setFolders] = useState<FolderType[]>([]);
   const [docWorkflowStatus, setDocWorkflowStatus] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
-  useEffect(() => {
-    const token = accessToken || localStorage.getItem('accessToken');
-    if (!token) {
-      router.push('/login');
-      return;
-    }
-    
-    fetchData();
-  }, [accessToken, router]);
-  
-  const fetchData = async () => {
-    try {
-      setLoading(true);
-      const [docsData, foldersData, workflowsData] = await Promise.all([
-        getDocuments(),
-        getFolders(),
-        getWorkflows(),
-      ]);
-      setDocuments(Array.isArray(docsData) ? docsData : []);
-      setFolders(Array.isArray(foldersData) ? foldersData : []);
-      // Build map of documentId -> latest workflow status
-      try {
-        const wfList = Array.isArray(workflowsData) ? workflowsData as WorkflowInstance[] : [];
-        const map = new Map<string, { id: number; status?: string }>();
 
+  // Incrementing this tells FolderSidebar to reload its own data
+  const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
+
+  const [selectedDocIds, setSelectedDocIds] = useState<Set<string>>(new Set());
+  const [moveSheetOpen, setMoveSheetOpen] = useState(false);
+  const [moveSingleDocId, setMoveSingleDocId] = useState<string | null>(null);
+
+  // Auth guard
+  useEffect(() => {
+    const token = accessToken || (typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null);
+    if (!token) router.push('/login');
+  }, [accessToken, router]);
+
+  /**
+   * Fetch documents from the server.
+   * silent=true  → updates data without showing the loading spinner (background sync)
+   * silent=false → shows spinner (initial load / manual retry)
+   */
+  const fetchData = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    setError(null);
+
+    const [docsResult, workflowsResult] = await Promise.allSettled([
+      getDocuments(),
+      getWorkflows(),
+    ]);
+
+    if (docsResult.status === 'fulfilled') {
+      setDocuments(Array.isArray(docsResult.value) ? docsResult.value : []);
+    } else {
+      console.error('Failed to fetch documents:', docsResult.reason);
+      setError('Failed to load documents');
+      setDocuments([]);
+    }
+
+    if (workflowsResult.status === 'fulfilled') {
+      try {
+        const wfList: WorkflowInstance[] = Array.isArray(workflowsResult.value) ? workflowsResult.value : [];
+        const map = new Map<string, { id: number; status?: string }>();
         wfList.forEach((w) => {
           const docId = (w.documentId ?? w.document_id ?? '') as string;
           if (!docId) return;
           const existing = map.get(docId);
-          if (!existing || (w.id && w.id > existing.id)) {
-            map.set(docId, { id: w.id, status: w.status });
-          }
+          if (!existing || (w.id && w.id > existing.id)) map.set(docId, { id: w.id, status: w.status });
         });
-
         const statusRecord: Record<string, string> = {};
-        map.forEach((v, k) => {
-          statusRecord[k] = v.status ?? '';
-        });
-
+        map.forEach((v, k) => { statusRecord[k] = v.status ?? ''; });
         setDocWorkflowStatus(statusRecord);
       } catch (e) {
         console.warn('Failed to build workflow status map', e);
       }
-      setError(null);
-    } catch (err) {
-      console.error('Failed to fetch data:', err);
-      setError('Failed to load documents or folders');
-      setDocuments([]);
-      setFolders([]);
-    } finally {
-      setLoading(false);
+    } else {
+      // Workflow status is supplementary (badges only) — don't let it block the document list.
+      console.warn('Failed to fetch workflows, continuing without workflow status:', workflowsResult.reason);
     }
-  };
 
-  // Calculate document count per folder
-  const getFolderDocumentCount = (folderId: string | null) => {
-    if (folderId === null) {
-      return documents.filter(doc => !doc.is_deleted).length;
-    }
-    return documents.filter(doc => doc.folder_id === folderId && !doc.is_deleted).length;
-  };
+    if (!silent) setLoading(false);
+  }, []);
 
-  const formatDate = (dateString: string) => {
-    try {
-      return new Date(dateString).toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-      });
-    } catch {
-      return dateString;
-    }
-  };
+  useEffect(() => { fetchData(); }, [fetchData]);
 
-  const getFileType = (filename: string) => {
-    const ext = filename.split('.').pop()?.toUpperCase() || 'FILE';
-    return ext;
-  };
+  useEffect(() => { setSelectedDocIds(new Set()); }, [selectedFolderId]);
+
+  const handleSelectFolder = useCallback(
+    (id: string | null) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (id === null) params.delete('folder');
+      else params.set('folder', id);
+      router.push(`${pathname}?${params.toString()}`);
+    },
+    [pathname, router, searchParams]
+  );
 
   const handleDelete = async (documentId: string, documentTitle: string) => {
-    const confirmed = window.confirm(`Are you sure you want to delete "${documentTitle}"? This action cannot be undone.`);
-    
-    if (!confirmed) return;
-    
+    if (!window.confirm(`Delete "${documentTitle}"? This cannot be undone.`)) return;
     try {
       await deleteDocument(documentId);
-      setDocuments(documents.filter(doc => doc.document_id !== documentId));
+      // Optimistic: remove immediately from local state
+      setDocuments((prev) => prev.filter((d) => d.document_id !== documentId));
+      setSelectedDocIds((prev) => { const n = new Set(prev); n.delete(documentId); return n; });
+      // Refresh sidebar counts
+      setSidebarRefreshKey((k) => k + 1);
     } catch (err) {
-      console.error('Failed to delete document:', err);
+      console.error('Failed to delete:', err);
       setError('Failed to delete document');
     }
   };
 
-  // Filter documents based on search query and selected folder
-  const filteredDocuments = documents.filter(doc => {
+  const openMoveSheet = (singleDocId?: string) => {
+    setMoveSingleDocId(singleDocId ?? null);
+    setMoveSheetOpen(true);
+  };
+
+  const handleMove = async (targetFolderId: string | null) => {
+    const ids = moveSingleDocId ? [moveSingleDocId] : Array.from(selectedDocIds);
+    if (!ids.length) return;
+    try {
+      await moveDocuments({ documentIds: ids, targetFolderId });
+
+      // ── Optimistic update ──────────────────────────────────────────────────
+      // Immediately patch folder_id in local state so the filtered view
+      // updates without any spinner or page refresh.
+      setDocuments((prev) =>
+        prev.map((d) =>
+          ids.includes(d.document_id)
+            ? { ...d, folder_id: targetFolderId }
+            : d
+        )
+      );
+      setSelectedDocIds(new Set());
+      // Tell the sidebar to reload its document counts
+      setSidebarRefreshKey((k) => k + 1);
+
+      // Silent background sync to pick up any server-side changes
+      fetchData(true);
+    } catch (err) {
+      console.error('Failed to move:', err);
+      setError('Failed to move documents');
+    }
+  };
+
+  const toggleDoc = (id: string) => {
+    setSelectedDocIds((prev) => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id); else n.add(id);
+      return n;
+    });
+  };
+
+  const toggleAll = () => {
+    if (selectedDocIds.size === filteredDocuments.length) setSelectedDocIds(new Set());
+    else setSelectedDocIds(new Set(filteredDocuments.map((d) => d.document_id)));
+  };
+
+  const filteredDocuments = documents.filter((doc) => {
     if (doc.is_deleted) return false;
-    
-    if (selectedFolderId !== null && doc.folder_id !== selectedFolderId) {
-      return false;
-    }
-    
-    if (searchQuery && !doc.title.toLowerCase().includes(searchQuery.toLowerCase())) {
-      return false;
-    }
-    
+    if (selectedFolderId !== null && doc.folder_id !== selectedFolderId) return false;
+    if (searchQuery && !doc.title.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     return true;
   });
 
+  const getStatus = (docId: string) => docWorkflowStatus[String(docId ?? '')] ?? '';
+
+  // ── Render ────────────────────────────────────────────────────────────────
+
   return (
-    <div className="min-h-screen w-full bg-gray-100">
-      {/* Header Section */}
-      <div className="bg-white border-b border-gray-200">
-        <div className="px-6 py-6">
-          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+    <div className="flex h-full w-full overflow-hidden">
+      {/* Folder sidebar */}
+      <FolderSidebar
+        selectedFolderId={selectedFolderId}
+        onSelectFolder={handleSelectFolder}
+        refreshKey={sidebarRefreshKey}
+        onDocumentsChanged={() => fetchData(true)}
+      />
+
+      {/* Main content */}
+      <div className="flex flex-col flex-1 overflow-hidden bg-gray-50">
+        {/* Page header */}
+        <div className="bg-white border-b border-gray-200 px-6 py-4 flex-shrink-0">
+          <div className="flex items-center justify-between gap-3">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">Documents</h1>
-              <p className="text-gray-600 text-sm mt-1">Manage and organize your documents</p>
+              <h1 className="text-2xl font-bold text-gray-900">Documents</h1>
+              <p className="text-gray-500 text-sm mt-0.5">Manage and organize your documents</p>
             </div>
-            <Button
-              onClick={() => setUploadDialogOpen(true)}
-              className="bg-[#953002] hover:bg-[#7a2401] text-white font-medium px-6 h-10 rounded-md shadow-sm transition-all"
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              Upload Document
-            </Button>
+            <div className="flex items-center gap-2">
+              {selectedDocIds.size > 0 && (
+                <Button
+                  variant="outline"
+                  onClick={() => openMoveSheet()}
+                  className="h-9 text-sm gap-1.5 border-slate-300"
+                >
+                  <MoveRight size={15} />
+                  Move selected ({selectedDocIds.size})
+                </Button>
+              )}
+              <Button
+                onClick={() => setUploadDialogOpen(true)}
+                className="bg-[#8B2E00] hover:bg-[#7a2401] text-white font-medium h-9 px-5 rounded-md shadow-sm"
+              >
+                <Plus className="w-4 h-4 mr-1.5" />
+                Upload
+              </Button>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Main Content */}
-      <div className="p-6">
-        <div className="space-y-6">
-          {/* Folders Section - Real Data */}
-          {!loading && (
-            <div className="bg-white rounded-lg shadow-sm p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                <Folder className="w-5 h-5" />
-                Folders ({folders.length + 1})
-              </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                {/* All Documents Folder */}
-                <div
-                  onClick={() => setSelectedFolderId(null)}
-                  className={`p-4 rounded-lg cursor-pointer transition-all ${
-                    selectedFolderId === null
-                      ? 'border-2 border-[#953002] bg-amber-50 shadow-md'
-                      : 'border border-gray-200 hover:shadow-md hover:border-gray-300'
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    <Folder className="w-8 h-8 text-[#953002] shrink-0 mt-1" />
-                    <div>
-                      <p className={`font-medium ${
-                        selectedFolderId === null ? 'text-[#953002]' : 'text-gray-900'
-                      }`}>All Documents</p>
-                      <p className="text-sm text-gray-600">
-                        {getFolderDocumentCount(null)} files
-                      </p>
-                    </div>
-                  </div>
-                </div>
+        {/* Content area */}
+        <div className="flex-1 overflow-y-auto p-6">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100">
+            {/* Toolbar */}
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-100">
+              <div className="flex items-center gap-3">
+                {/* Select-all — list view only */}
+                {viewMode === 'list' && (
+                  <input
+                    type="checkbox"
+                    checked={selectedDocIds.size === filteredDocuments.length && filteredDocuments.length > 0}
+                    onChange={toggleAll}
+                    className="rounded border-gray-300 w-3.5 h-3.5"
+                  />
+                )}
+                <span className="text-sm font-medium text-gray-500">
+                  {filteredDocuments.length} document{filteredDocuments.length !== 1 ? 's' : ''}
+                </span>
+              </div>
 
-                {/* Individual Folders */}
-                {folders.map((folder) => (
-                  <div
-                    key={folder.folder_id}
-                    onClick={() => setSelectedFolderId(folder.folder_id)}
-                    className={`p-4 rounded-lg cursor-pointer transition-all ${
-                      selectedFolderId === folder.folder_id
-                        ? 'border-2 border-[#953002] bg-amber-50 shadow-md'
-                        : 'border border-gray-200 hover:shadow-md hover:border-gray-300'
+              <div className="flex items-center gap-2">
+                <Input
+                  placeholder="Search documents…"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-48 h-8 text-sm bg-gray-50 border-gray-200"
+                />
+
+                {/* View toggle */}
+                <div className="flex items-center rounded-lg border border-gray-200 bg-gray-50 p-0.5 gap-0.5">
+                  <button
+                    type="button"
+                    title="List view"
+                    onClick={() => setViewMode('list')}
+                    className={`p-1.5 rounded-md transition-all ${
+                      viewMode === 'list'
+                        ? 'bg-white shadow-sm text-[#8B2E00]'
+                        : 'text-gray-400 hover:text-gray-600'
                     }`}
                   >
-                    <div className="flex items-start gap-3">
-                      <Folder className="w-8 h-8 text-[#953002] shrink-0 mt-1" />
-                      <div>
-                        <p className={`font-medium ${
-                          selectedFolderId === folder.folder_id ? 'text-[#953002]' : 'text-gray-900'
-                        }`}>{folder.name}</p>
-                        <p className="text-sm text-gray-600">
-                          {getFolderDocumentCount(folder.folder_id)} files
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                    <List size={15} />
+                  </button>
+                  <button
+                    type="button"
+                    title="Grid view"
+                    onClick={() => setViewMode('grid')}
+                    className={`p-1.5 rounded-md transition-all ${
+                      viewMode === 'grid'
+                        ? 'bg-white shadow-sm text-[#8B2E00]'
+                        : 'text-gray-400 hover:text-gray-600'
+                    }`}
+                  >
+                    <LayoutGrid size={15} />
+                  </button>
+                </div>
               </div>
             </div>
-          )}
 
-          {/* Documents Section */}
-          <div className="bg-white rounded-lg shadow-sm p-6">
-            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6">
-              <h2 className="text-lg font-semibold text-gray-900">
-                {selectedFolderId !== null 
-                  ? folders.find(f => f.folder_id === selectedFolderId)?.name || 'Documents'
-                  : 'All Documents'
-                }
-              </h2>
-              <Input
-                placeholder="Search documents..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="sm:w-64 bg-gray-50 border-gray-300 h-10"
-              />
-            </div>
-
-            {/* Loading State */}
+            {/* Loading */}
             {loading && (
-              <div className="flex flex-col items-center justify-center py-12">
-                <Loader className="w-8 h-8 text-[#953002] animate-spin mb-4" />
-                <p className="text-gray-600">Loading documents...</p>
+              <div className="flex flex-col items-center justify-center py-16">
+                <Loader className="w-7 h-7 text-[#8B2E00] animate-spin mb-3" />
+                <p className="text-gray-500 text-sm">Loading documents…</p>
               </div>
             )}
 
-            {/* Error State */}
+            {/* Error */}
             {error && !loading && (
-              <div className="text-center py-12">
-                <p className="text-red-600 font-medium">{error}</p>
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <p className="text-red-600 font-medium text-sm">{error}</p>
                 <button
-                  onClick={fetchData}
-                  className="mt-4 px-4 py-2 bg-[#953002] text-white rounded hover:bg-[#7a2401] transition"
+                  onClick={() => fetchData(false)}
+                  className="mt-3 px-4 py-2 bg-[#8B2E00] text-white text-sm rounded hover:bg-[#7a2401] transition"
                 >
                   Retry
                 </button>
               </div>
             )}
 
-            {/* Empty State */}
+            {/* Empty */}
             {!loading && !error && filteredDocuments.length === 0 && (
-              <div className="text-center py-12">
-                <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                <p className="text-gray-600 font-medium">No documents yet</p>
-                <p className="text-gray-500 text-sm">Upload your first document to get started</p>
+              <div className="flex flex-col items-center justify-center py-16">
+                <FileText className="w-14 h-14 text-gray-200 mb-3" />
+                <p className="text-gray-500 font-medium text-sm">No documents found</p>
+                <p className="text-gray-400 text-xs mt-1">Upload a document to get started</p>
               </div>
             )}
 
-            {/* Documents Table */}
-            {!loading && !error && filteredDocuments.length > 0 && (
+            {/* ── LIST VIEW ─────────────────────────────────────────────────── */}
+            {!loading && !error && filteredDocuments.length > 0 && viewMode === 'list' && (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="border-b border-gray-200">
-                    <tr>
-                      <th className="text-left py-3 px-4 font-semibold text-gray-900">Title</th>
-                      <th className="text-left py-3 px-4 font-semibold text-gray-900">Type</th>
-                      <th className="text-left py-3 px-4 font-semibold text-gray-900">Created</th>
-                      <th className="text-left py-3 px-4 font-semibold text-gray-900">Status</th>
-                      <th className="text-left py-3 px-4 font-semibold text-gray-900">Locked</th>
-                      <th className="text-left py-3 px-4 font-semibold text-gray-900">Actions</th>
+                  <thead>
+                    <tr className="border-b border-gray-100 bg-gray-50/60">
+                      <th className="py-2.5 px-4 w-10">
+                        <input
+                          type="checkbox"
+                          checked={selectedDocIds.size === filteredDocuments.length && filteredDocuments.length > 0}
+                          onChange={toggleAll}
+                          className="rounded border-gray-300 w-3.5 h-3.5"
+                        />
+                      </th>
+                      <th className="text-left py-2.5 px-4 font-semibold text-gray-500 text-xs uppercase tracking-wide">Title</th>
+                      <th className="text-left py-2.5 px-4 font-semibold text-gray-500 text-xs uppercase tracking-wide">Type</th>
+                      <th className="text-left py-2.5 px-4 font-semibold text-gray-500 text-xs uppercase tracking-wide">Created</th>
+                      <th className="text-left py-2.5 px-4 font-semibold text-gray-500 text-xs uppercase tracking-wide">Status</th>
+                      <th className="text-left py-2.5 px-4 font-semibold text-gray-500 text-xs uppercase tracking-wide">Locked</th>
+                      <th className="text-left py-2.5 px-4 font-semibold text-gray-500 text-xs uppercase tracking-wide">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredDocuments.map((doc) => (
-                      <tr 
-                        key={doc.document_id} 
-                        className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer transition-colors"
-                        onClick={() => router.push(`/documents/${doc.document_id}`)}
+                      <tr
+                        key={doc.document_id}
+                        className={`border-b border-gray-50 transition-colors ${
+                          selectedDocIds.has(doc.document_id) ? 'bg-amber-50/60' : 'hover:bg-gray-50/60'
+                        }`}
                       >
                         <td className="py-3 px-4">
-                          <div className="flex items-center gap-2">
-                            <FileIcon type={getFileType(doc.title)} />
-                            <div>
-                              <p className="font-medium text-gray-900 hover:text-[#953002]">{doc.title}</p>
+                          <input
+                            type="checkbox"
+                            checked={selectedDocIds.has(doc.document_id)}
+                            onChange={() => toggleDoc(doc.document_id)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="rounded border-gray-300 w-3.5 h-3.5"
+                          />
+                        </td>
+                        <td
+                          className="py-3 px-4 cursor-pointer"
+                          onClick={() => router.push(`/documents/${doc.document_id}`)}
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 text-[10px] font-bold ${getFileColor(doc.title)}`}>
+                              <FileText size={14} />
                             </div>
+                            <p className="font-medium text-gray-800 hover:text-[#8B2E00] truncate max-w-[200px]">
+                              {doc.title}
+                            </p>
                           </div>
                         </td>
-                        <td className="py-3 px-4 text-gray-600">{getFileType(doc.title)}</td>
-                        <td className="py-3 px-4 text-gray-600">{formatDate(doc.created_at)}</td>
+                        <td className="py-3 px-4 text-gray-400 text-xs">{getFileType(doc.title)}</td>
+                        <td className="py-3 px-4 text-gray-400 text-xs">{formatDate(doc.created_at)}</td>
+                        <td className="py-3 px-4"><StatusBadge status={getStatus(doc.document_id)} /></td>
                         <td className="py-3 px-4">
-
-                          {/* Status badge (if any) */}
-                          {(() => {
-                            const status = docWorkflowStatus[String(doc.document_id ?? '')];
-                            if (!status) {
-                              return (
-                                <span className="px-3 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-700">None</span>
-                              );
-                            }
-
-                            const normalized = String(status).toUpperCase();
-                            if (normalized === 'PENDING_APPROVAL') {
-                              return <span className="px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">Pending Approval</span>;
-                            }
-
-                            if (normalized === 'APPROVED') {
-                              return <span className="px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">Approved</span>;
-                            }
-
-                            if (normalized === 'REJECTED') {
-                              return <span className="px-3 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700">Rejected</span>;
-                            }
-
-                            return <span className="px-3 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-700">{status}</span>;
-                          })()}
-                          
-                        </td>
-                        <td className="py-3 px-4">
-                          <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                            doc.is_locked ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                            doc.is_locked ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
                           }`}>
                             {doc.is_locked ? 'Locked' : 'Unlocked'}
                           </span>
                         </td>
                         <td className="py-3 px-4">
-                          <div className="flex items-center gap-2">
-                            <button className="p-1 hover:bg-gray-200 rounded transition" title="View">
-                              <Eye className="w-4 h-4 text-gray-600" />
-                            </button>
-                            <button className="p-1 hover:bg-gray-200 rounded transition" title="Edit">
-                              <Edit2 className="w-4 h-4 text-gray-600" />
-                            </button>
-                            <button className="p-1 hover:bg-gray-200 rounded transition" title="Download">
-                              <Download className="w-4 h-4 text-gray-600" />
-                            </button>
-                            <button 
-                              className="p-1 hover:bg-red-100 rounded transition" 
-                              title="Delete"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDelete(doc.document_id, doc.title);
-                              }}
-                            >
-                              <Trash2 className="w-4 h-4 text-red-600" />
-                            </button>
-                            <button className="p-1 hover:bg-gray-200 rounded transition" title="Share">
-                              <Share2 className="w-4 h-4 text-gray-600" />
-                            </button>
+                          <div className="flex items-center gap-0.5">
+                            <button onClick={() => router.push(`/documents/${doc.document_id}`)} className="p-1.5 hover:bg-gray-100 rounded transition" title="View"><Eye className="w-3.5 h-3.5 text-gray-400" /></button>
+                            <button className="p-1.5 hover:bg-gray-100 rounded transition" title="Edit"><Edit2 className="w-3.5 h-3.5 text-gray-400" /></button>
+                            <button className="p-1.5 hover:bg-gray-100 rounded transition" title="Download"><Download className="w-3.5 h-3.5 text-gray-400" /></button>
+                            <button onClick={(e) => { e.stopPropagation(); openMoveSheet(doc.document_id); }} className="p-1.5 hover:bg-blue-50 rounded transition" title="Move"><MoveRight className="w-3.5 h-3.5 text-blue-400" /></button>
+                            <button onClick={(e) => { e.stopPropagation(); handleDelete(doc.document_id, doc.title); }} className="p-1.5 hover:bg-red-50 rounded transition" title="Delete"><Trash2 className="w-3.5 h-3.5 text-red-400" /></button>
+                            <button className="p-1.5 hover:bg-gray-100 rounded transition" title="Share"><Share2 className="w-3.5 h-3.5 text-gray-400" /></button>
                           </div>
                         </td>
                       </tr>
@@ -357,26 +675,42 @@ export default function DocumentsPage() {
                 </table>
               </div>
             )}
+
+            {/* ── GRID VIEW ─────────────────────────────────────────────────── */}
+            {!loading && !error && filteredDocuments.length > 0 && viewMode === 'grid' && (
+              <div className="p-5 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+                {filteredDocuments.map((doc) => (
+                  <DocCard
+                    key={doc.document_id}
+                    doc={doc}
+                    selected={selectedDocIds.has(doc.document_id)}
+                    status={getStatus(doc.document_id)}
+                    onToggle={() => toggleDoc(doc.document_id)}
+                    onView={() => router.push(`/documents/${doc.document_id}`)}
+                    onDelete={() => handleDelete(doc.document_id, doc.title)}
+                    onMove={() => openMoveSheet(doc.document_id)}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Upload Dialog */}
+      {/* Upload dialog */}
       <UploadDocumentDialog
         open={uploadDialogOpen}
         onOpenChange={setUploadDialogOpen}
-        onUploadSuccess={fetchData}
+        onUploadSuccess={() => { fetchData(false); setSidebarRefreshKey((k) => k + 1); }}
+        defaultFolderId={selectedFolderId ?? undefined}
       />
-    </div>
-  );
-}
 
-function FileIcon({ type }: { type: string }) {
-  return (
-    <div className="shrink-0">
-      <div className="w-8 h-8 rounded bg-gray-100 flex items-center justify-center">
-        <FileText className="w-5 h-5 text-gray-600" />
-      </div>
+      {/* Move sheet */}
+      <MoveSheet
+        open={moveSheetOpen}
+        onClose={() => setMoveSheetOpen(false)}
+        onMove={handleMove}
+      />
     </div>
   );
 }
