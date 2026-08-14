@@ -47,7 +47,6 @@ export default function ShareDocumentDialog({
     const [copied, setCopied] = useState<boolean>(false);
 
     // Security options for share link
-    const [requireAuth, setRequireAuth] = useState<boolean>(true);
     const [allowDownload, setAllowDownload] = useState<boolean>(false);
     const [allowComments, setAllowComments] = useState<boolean>(true);
 
@@ -67,7 +66,6 @@ export default function ShareDocumentDialog({
         setLinkExpiry("");
         setPassword("");
         setShowPassword(false);
-        setRequireAuth(true);
         setAllowDownload(false);
         setAllowComments(false);
         setCopied(false);
@@ -110,7 +108,6 @@ export default function ShareDocumentDialog({
                     documentId: documentId,
                     accessLevel,
                     expiryDays: linkExpiry,
-                    requireAuth,
                     allowDownload,
                     allowComments,
                     password: normalizedPassword ? normalizedPassword : null,
@@ -122,19 +119,19 @@ export default function ShareDocumentDialog({
                 throw new Error(text || "Failed to generate share link");
             }
 
-                const data = await response.json();
-                setGeneratedLink(data.url);
+            const data = await response.json();
+            setGeneratedLink(data.url);
 
-                // Extract token from URL (assuming it's the last segment)
-                const extractedToken = data.url.split("/").pop() || "";
-                setToken(extractedToken);
-            } catch (err) {
-                const errorMessage = err instanceof Error ? err.message : "An error occurred";
-                setError(errorMessage);
-                console.error("Generate link error:", err);
-            } finally {
-                setLoading(false);
-            }
+            // Extract token from URL (assuming it's the last segment)
+            const extractedToken = data.url.split("/").pop() || "";
+            setToken(extractedToken);
+        } catch (err) {
+            const errorMessage = err instanceof Error ? err.message : "An error occurred";
+            setError(errorMessage);
+            console.error("Generate link error:", err);
+        } finally {
+            setLoading(false);
+        }
     };
 
     // Revoke an existing share link using its token
@@ -225,7 +222,7 @@ export default function ShareDocumentDialog({
                                 </option>
                                 <option value="VIEW">View Only</option>
                                 <option value="COMMENT">View & Comment</option>
-                                {/* <option value="EDIT">Edit</option> */}
+                                <option value="EDIT">Edit</option>
                             </select>
                             <ChevronDown className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
                         </div>
@@ -300,12 +297,6 @@ export default function ShareDocumentDialog({
                         <h3 className="text-sm font-medium text-gray-800 mb-4">
                             Advanced Options
                         </h3>
-                        <ToggleOption
-                            label="Require Authentication"
-                            description="Users must log in to access"
-                            checked={requireAuth}
-                            onChange={setRequireAuth}
-                        />
                         <ToggleOption
                             label="Allow Download"
                             description="Users can download the document"
