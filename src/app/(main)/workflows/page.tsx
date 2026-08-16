@@ -46,6 +46,11 @@ export default function WorkflowBuilderPage() {
   const [saveAsTemplate, setSaveAsTemplate] = useState(false);
   const [templateName, setTemplateName] = useState('');
 
+  // When set, approvers are taken to the signing page to place a signature on
+  // the PDF instead of approving straight from the comment dialog. Prefilled
+  // from the chosen template, but can be overridden for this workflow.
+  const [requiresSignature, setRequiresSignature] = useState(false);
+
   // If a template is selected, lock certain fields and approver selection
   const isTemplateLocked = Boolean(selectedTemplate);
 
@@ -187,6 +192,10 @@ export default function WorkflowBuilderPage() {
       setDescription(selectedTemplateData.description ?? '');
       setDocumentType(selectedTemplateData.documentType ?? '');
       setWorkflowType(selectedTemplateData.workflowType ?? '');
+      setRequiresSignature(Boolean(selectedTemplateData.requiresSignature));
+    } else {
+      // Cleared the template - back to a manual workflow with no signature step.
+      setRequiresSignature(false);
     }
 
     // If a template is selected, fetch its steps to populate approvers
@@ -307,6 +316,7 @@ export default function WorkflowBuilderPage() {
       dueDate,
       approvers: approvers.map(a => a.userId),
       createdByUserId: "TEMP_USER",
+      requiresSignature,
       saveAsTemplate: saveAsTemplate,
       templateName: saveAsTemplate ? templateName.trim() : ""
     };
@@ -577,6 +587,28 @@ export default function WorkflowBuilderPage() {
                     <option value="HIGH">High</option>
                     <option value="URGENT">Urgent</option>
                   </select>
+                </div>
+
+                {/* Digital signature requirement */}
+                <div className="rounded-md border border-slate-200 bg-slate-50/60 p-3">
+                  <label className="flex cursor-pointer items-start gap-2.5">
+                    <input
+                      type="checkbox"
+                      checked={requiresSignature}
+                      onChange={(e) => setRequiresSignature(e.target.checked)}
+                      className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-[#8B2E00]"
+                    />
+                    <span>
+                      <span className="block text-sm font-medium text-slate-800">
+                        Require a digital signature to approve
+                      </span>
+                      <span className="mt-0.5 block text-xs leading-relaxed text-slate-500">
+                        Approvers open the signing page and place their signature on the document.
+                        It is written into the PDF and saved as a new version. PDF documents only.
+                        {selectedTemplate && " Prefilled from the selected template - you can change it for this workflow."}
+                      </span>
+                    </span>
+                  </label>
                 </div>
 
                 {/* Save as Template Option */}

@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Filter } from "lucide-react";
-import { auditService } from "@/lib/auditService";
+import { type AuditFilters } from "@/lib/auditService";
 import { getAdminUsers, type User } from "@/lib/api-client";
 import {
     Select,
@@ -15,9 +15,14 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 
+/**
+ * The filter bar reports what the user asked for; the page turns that into a
+ * query. It used to fetch the rows itself and hand them up, which meant the
+ * filter and the pager could not agree on which page was being shown.
+ */
 type AuditFilterProps = {
-    onFilter: (filteredData: any[]) => void; // Sends data to the parent to update the table
-    onReset: () => void; // Tells the parent to reload original logs
+    onFilter: (filters: AuditFilters) => void;
+    onReset: () => void;
 };
 
 export default function AuditFilter({ onFilter, onReset }: AuditFilterProps) {
@@ -58,22 +63,13 @@ export default function AuditFilter({ onFilter, onReset }: AuditFilterProps) {
         setFilters(prev => ({ ...prev, [name]: value }));
     };
 
-    const handleApplyFilters = async () => {
-        try {
-            const params = new URLSearchParams();
-            
-            if (filters.userId && filters.userId !== "all") params.append("userId", filters.userId);
-            if (filters.action && filters.action !== "all") params.append("action", filters.action);
-            if (filters.fromDate) params.append("fromDate", filters.fromDate);
-            if (filters.toDate) params.append("toDate", filters.toDate);
-
-            const data = await auditService.getFilteredLogs(params);
-            onFilter(data); 
-        } catch (error: any) {
-            // Alert the user if it's a 403
-            alert(error.message || "Failed to filter logs");
-            console.error("Error filtering logs:", error);
-        }
+    const handleApplyFilters = () => {
+        onFilter({
+            userId: filters.userId,
+            action: filters.action,
+            fromDate: filters.fromDate,
+            toDate: filters.toDate,
+        });
     };
     
     const handleClear = () => {

@@ -7,7 +7,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { AddUserDialog } from "@/components/user-mgt/AddUserDialog";
 import { EditUserDialog } from "@/components/user-mgt/EditUserDialog";
-import { getAdminUsers, getRoles, updateUserStatus, type User, type Role } from "@/lib/api-client";
+import {
+	getUsersPage, getUserStats, getRoles, updateUserStatus,
+	type User, type Role, type UserStats,
+} from "@/lib/api-client";
 import { hasPermission } from "@/lib/access-control";
 import { useAuthStore } from "@/store/auth-store";
 import {
@@ -159,9 +162,13 @@ export default function UserManagementPage() {
 	const [selectedStatus, setSelectedStatus] = useState<"all" | "Active" | "Inactive">("all");
 	const [isRoleDropdownOpen, setIsRoleDropdownOpen] = useState(false);
 
-	// Pagination state
+	// Pagination state. currentPage is one-based for display; the API is
+	// zero-based, and the conversion happens at the call.
 	const [currentPage, setCurrentPage] = useState(1);
 	const [pageSize, setPageSize] = useState<number>(PAGE_SIZE_OPTIONS[0]);
+	const [totalPages, setTotalPages] = useState(1);
+	const [totalElements, setTotalElements] = useState(0);
+	const [stats, setStats] = useState<UserStats | null>(null);
 
 	// Dialog state
 	const [isAddUserOpen, setIsAddUserOpen] = useState(false);
@@ -169,34 +176,73 @@ export default function UserManagementPage() {
 	const [selectedUser, setSelectedUser] = useState<User | null>(null);
 
 	// ── Data loading ──────────────────────────────────────────────
+	/**
+	 * One page of users, filtered by the server.
+	 *
+	 * The search box and both filters are sent as query parameters, so the
+	 * response only ever contains the rows being displayed. Previously the whole
+	 * directory was downloaded and then searched and sliced in the browser,
+	 * which meant the "10 per page" setting saved nothing at all.
+	 */
 	const loadData = useCallback(async () => {
 		setLoading(true);
 		setError(null);
 		try {
-			// Fetch users first
-			const usersData = await getAdminUsers();
-			setUsers(usersData);
+			const result = await getUsersPage({
+				page: currentPage - 1,   // the API is zero-based, the UI is not
+				size: pageSize,
+				search: query.trim() || undefined,
+				status: selectedStatus === "all" ? undefined : selectedStatus.toUpperCase(),
+				role: selectedRole === "all" ? undefined : selectedRole,
+			});
 
-			// Try to fetch roles separately, so if the user lacks "Roles - View" permission,
-			// it doesn't break the entire user management page.
-			try {
-				const rolesData = await getRoles();
-				setRoles(rolesData);
-			} catch (roleErr) {
-				console.warn("Could not fetch roles for filter dropdown:", roleErr);
-				setRoles([]);
-			}
+			setUsers(result.content);
+			setTotalElements(result.totalElements);
+			setTotalPages(Math.max(1, result.totalPages));
 		} catch (err) {
 			const message = err instanceof Error ? err.message : "Failed to load users";
 			setError(message);
+			setUsers([]);
+			setTotalElements(0);
+			setTotalPages(1);
 		} finally {
 			setLoading(false);
 		}
+	}, [currentPage, pageSize, query, selectedStatus, selectedRole]);
+
+	// Header totals cover the whole directory, so they are counted separately
+	// from the page and only need reloading when a user actually changes.
+	const loadStats = useCallback(async () => {
+		try {
+			setStats(await getUserStats());
+		} catch (err) {
+			console.warn("Could not load user statistics:", err);
+			setStats(null);
+		}
 	}, []);
 
+	// Roles are fetched separately so that a user without "Roles - View" still
+	// gets a working page - only the filter dropdown is reduced.
 	useEffect(() => {
-		loadData();
+		getRoles()
+			.then(setRoles)
+			.catch((roleErr) => {
+				console.warn("Could not fetch roles for filter dropdown:", roleErr);
+				setRoles([]);
+			});
+		loadStats();
+	}, [loadStats]);
+
+	// Typing in the search box should not fire a request per keystroke.
+	useEffect(() => {
+		const timer = setTimeout(() => { loadData(); }, 250);
+		return () => clearTimeout(timer);
 	}, [loadData]);
+
+	// After a user is added or edited, both the page and the totals are stale.
+	const refreshAll = useCallback(async () => {
+		await Promise.all([loadData(), loadStats()]);
+	}, [loadData, loadStats]);
 
 	// ── Processed rows ────────────────────────────────────────────
 	const allRows = useMemo(
@@ -214,61 +260,36 @@ export default function UserManagementPage() {
 	);
 
 	// ── Stats ─────────────────────────────────────────────────────
-	const stats = useMemo(() => {
-		const total = allRows.length;
-		const active = allRows.filter((u) => u.status === "Active").length;
-		const inactive = total - active;
-		const uniqueRoles = new Set(allRows.map((u) => u.role)).size;
-		return { total, active, inactive, uniqueRoles };
-	}, [allRows]);
+	// Counted across the whole directory by the database. Deriving them from
+	// the rows on screen would have reported "10 users" once paging was real.
+	const headerStats = useMemo(
+		() => ({
+			total: stats?.total ?? totalElements,
+			active: stats?.active ?? 0,
+			inactive: stats?.inactive ?? 0,
+			uniqueRoles: stats?.roles ?? roles.length,
+		}),
+		[stats, totalElements, roles.length]
+	);
 
-	// ── Filtering ─────────────────────────────────────────────────
-	const filteredRows = useMemo(() => {
-		const normalizedQuery = query.trim().toLowerCase();
-
-		return allRows.filter((user) => {
-			// Text search
-			if (normalizedQuery) {
-				const matchesSearch =
-					user.name.toLowerCase().includes(normalizedQuery) ||
-					user.email.toLowerCase().includes(normalizedQuery) ||
-					user.role.toLowerCase().includes(normalizedQuery);
-				if (!matchesSearch) return false;
-			}
-
-			// Role filter
-			if (selectedRole !== "all" && user.role !== selectedRole) {
-				return false;
-			}
-
-			// Status filter
-			if (selectedStatus !== "all" && user.status !== selectedStatus) {
-				return false;
-			}
-
-			return true;
-		});
-	}, [query, allRows, selectedRole, selectedStatus]);
-
-	// ── Pagination ────────────────────────────────────────────────
-	const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize));
+	// The server has already searched and filtered; these rows are the page.
+	const filteredRows = allRows;
+	const paginatedRows = allRows;
 	const safePage = Math.min(currentPage, totalPages);
 
-	const paginatedRows = useMemo(() => {
-		const start = (safePage - 1) * pageSize;
-		return filteredRows.slice(start, start + pageSize);
-	}, [filteredRows, safePage, pageSize]);
-
-	// Reset to page 1 when filters change
+	// A changed filter invalidates the page number - page 5 of a two-page result
+	// would render empty.
 	useEffect(() => {
 		setCurrentPage(1);
 	}, [query, selectedRole, selectedStatus, pageSize]);
 
-	// ── Unique roles for filter ───────────────────────────────────
-	const uniqueRoles = useMemo(() => {
-		const roleSet = new Set(allRows.map((u) => u.role));
-		return Array.from(roleSet).sort();
-	}, [allRows]);
+	// ── Roles for the filter dropdown ─────────────────────────────
+	// Taken from the roles endpoint rather than from the rows on screen, which
+	// would only ever list the roles that happened to appear on this page.
+	const uniqueRoles = useMemo(
+		() => roles.map((r) => getRoleName(r)).filter(Boolean).sort(),
+		[roles]
+	);
 
 	// ── Handlers ──────────────────────────────────────────────────
 	const handleToggleStatus = async (user: User) => {
@@ -280,6 +301,8 @@ export default function UserManagementPage() {
 					item.userId === user.userId ? { ...item, status: nextStatus } : item
 				)
 			);
+			// The active/inactive totals just changed.
+			loadStats();
 		} catch (err) {
 			const message = err instanceof Error ? err.message : "Failed to update user status";
 			setError(message);
@@ -299,8 +322,10 @@ export default function UserManagementPage() {
 
 	const hasActiveFilters = query !== "" || selectedRole !== "all" || selectedStatus !== "all";
 
-	const startEntry = filteredRows.length === 0 ? 0 : (safePage - 1) * pageSize + 1;
-	const endEntry = Math.min(safePage * pageSize, filteredRows.length);
+	// These describe the whole result set on the server, not the rows held in
+	// the browser - with real paging those are no longer the same number.
+	const startEntry = totalElements === 0 ? 0 : (safePage - 1) * pageSize + 1;
+	const endEntry = Math.min(safePage * pageSize, totalElements);
 
 	// ── Render ────────────────────────────────────────────────────
 	return (
@@ -334,25 +359,25 @@ export default function UserManagementPage() {
 					<StatCard
 						icon={<UsersRound className="h-5 w-5" />}
 						label="Total Users"
-						value={stats.total}
+						value={headerStats.total}
 						accent="#953002"
 					/>
 					<StatCard
 						icon={<UserCheck className="h-5 w-5" />}
 						label="Active Users"
-						value={stats.active}
+						value={headerStats.active}
 						accent="#059669"
 					/>
 					<StatCard
 						icon={<UserMinus className="h-5 w-5" />}
 						label="Inactive Users"
-						value={stats.inactive}
+						value={headerStats.inactive}
 						accent="#d97706"
 					/>
 					<StatCard
 						icon={<ShieldCheck className="h-5 w-5" />}
 						label="Total Roles"
-						value={stats.uniqueRoles}
+						value={headerStats.uniqueRoles}
 						accent="#6366f1"
 					/>
 				</div>
@@ -421,7 +446,7 @@ export default function UserManagementPage() {
 														<Users className="h-3.5 w-3.5" />
 														All Roles
 														<span className="ml-auto text-[10px] text-slate-400">
-															{allRows.length}
+															{headerStats.total}
 														</span>
 													</button>
 
@@ -463,19 +488,19 @@ export default function UserManagementPage() {
 								<FilterChip
 									label="All"
 									active={selectedStatus === "all"}
-									count={allRows.length}
+									count={headerStats.total}
 									onClick={() => setSelectedStatus("all")}
 								/>
 								<FilterChip
 									label="Active"
 									active={selectedStatus === "Active"}
-									count={stats.active}
+									count={headerStats.active}
 									onClick={() => setSelectedStatus("Active")}
 								/>
 								<FilterChip
 									label="Inactive"
 									active={selectedStatus === "Inactive"}
-									count={stats.inactive}
+									count={headerStats.inactive}
 									onClick={() => setSelectedStatus("Inactive")}
 								/>
 
@@ -499,7 +524,7 @@ export default function UserManagementPage() {
 				<AddUserDialog
 					open={isAddUserOpen}
 					onOpenChange={setIsAddUserOpen}
-					onUserCreated={loadData}
+					onUserCreated={refreshAll}
 				/>
 				<EditUserDialog
 					open={isEditUserOpen}
@@ -508,7 +533,7 @@ export default function UserManagementPage() {
 						if (!open) setSelectedUser(null);
 					}}
 					user={selectedUser}
-					onUserUpdated={loadData}
+					onUserUpdated={refreshAll}
 				/>
 
 				{/* Table Card */}
@@ -522,7 +547,7 @@ export default function UserManagementPage() {
 									variant="outline"
 									className="rounded-full border-slate-200 px-2 py-0.5 text-[10px] font-semibold text-slate-500"
 								>
-									{filteredRows.length} of {allRows.length}
+									{totalElements} of {headerStats.total}
 								</Badge>
 							</div>
 
@@ -709,11 +734,11 @@ export default function UserManagementPage() {
 									<span className="font-semibold text-slate-700">{endEntry}</span>
 									{" of "}
 									<span className="font-semibold text-slate-700">
-										{filteredRows.length}
+										{totalElements}
 									</span>{" "}
-									{filteredRows.length !== allRows.length && (
+									{totalElements !== headerStats.total && (
 										<span className="text-slate-400">
-											(filtered from {allRows.length})
+											(filtered from {headerStats.total})
 										</span>
 									)}
 								</p>

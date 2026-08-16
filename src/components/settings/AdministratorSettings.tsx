@@ -27,7 +27,7 @@ export default function AdministratorSettings(props: SettingsComponentProps) {
         <p className="text-gray-500 mt-1">System-wide configuration options (Admin only)</p>
       </div>
       
-      {canManageApiKeys && <ApiKeysCard {...props} />}
+      {canManageApiKeys && <ApiKeysCard />}
       {canManagePolicy && <DocumentPolicyCard {...props} />}
       {canManageAccess && <AccessControlCard {...props} />}
       {canExecuteDanger && <DangerZoneCard />}
