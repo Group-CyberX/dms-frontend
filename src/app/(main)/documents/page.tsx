@@ -47,17 +47,25 @@ function buildTree(
 ): FolderTreeNode[] {
   return folders
     .filter((f) => (f.parent_folder_id ?? null) === parentId)
-    .map((f) => ({
-      folder_id: f.folder_id,
-      name: f.name,
-      path: f.path,
-      parent_folder_id: f.parent_folder_id,
-      documentCount: documents.filter(
+    .map((f) => {
+      const children = buildTree(folders, documents, f.folder_id);
+      const directCount = documents.filter(
         (d) => !d.is_deleted && d.folder_id === f.folder_id
-      ).length,
-      totalSize: 0,
-      children: buildTree(folders, documents, f.folder_id),
-    }));
+      ).length;
+      const childCount = children.reduce(
+        (sum, child) => sum + child.documentCount,
+        0
+      );
+      return {
+        folder_id: f.folder_id,
+        name: f.name,
+        path: f.path,
+        parent_folder_id: f.parent_folder_id,
+        documentCount: directCount + childCount,
+        totalSize: 0,
+        children,
+      };
+    });
 }
 
 function formatDate(dateString: string) {

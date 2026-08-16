@@ -22,6 +22,8 @@ type AuditLog = {
     timestamp: string;
     ip: string;
     status: string;
+    /** What was attempted, in words - set for downloads, denials, exports. */
+    details?: string | null;
 };
 
 type Props = {
@@ -29,8 +31,10 @@ type Props = {
 };
 
 export interface AuditTableRef {
-    exportToCSV: () => void;
-    exportToPDF: () => void;
+    // The rows to export are passed in: the table shows one page, but an export
+    // should cover every row matching the current filters.
+    exportToCSV: (rows?: AuditLog[]) => void;
+    exportToPDF: (rows?: AuditLog[]) => void;
 }
 
 const AuditTable = forwardRef<AuditTableRef, Props>(function AuditTable({ logs = [] }, ref) {
@@ -41,18 +45,21 @@ const AuditTable = forwardRef<AuditTableRef, Props>(function AuditTable({ logs =
     });
 
     // Export Logic
-    const exportToCSV = () => {
-        if (!sortedLogs || sortedLogs.length === 0) return;
-        const headers = ["User", "Action", "Entity", "Timestamp", "IP Address", "Status"];
-        const rows = sortedLogs.map(log => [
+    const exportToCSV = (rows?: AuditLog[]) => {
+        const exportRows = rows && rows.length > 0 ? rows : sortedLogs;
+        if (!exportRows || exportRows.length === 0) return;
+        const headers = ["User", "Action", "Details", "Entity", "Timestamp", "IP Address", "Status"];
+        const csvRows = exportRows.map(log => [
             log.user_id,
             log.action,
+            // Quoted: descriptions contain spaces and commas.
+            `"${(log.details ?? "").replace(/"/g, '""')}"`,
             log.entity_id,
             formatAuditDate(log.timestamp),
             log.ip === "0:0:0:0:0:0:0:1" ? "127.0.0.1 (Local)" : log.ip,
             log.status
         ]);
-        const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n");
+        const csvContent = [headers, ...csvRows].map(e => e.join(",")).join("\n");
         const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
@@ -64,14 +71,16 @@ const AuditTable = forwardRef<AuditTableRef, Props>(function AuditTable({ logs =
         URL.revokeObjectURL(url);
     };
 
-    const exportToPDF = () => {
-        if (!sortedLogs || sortedLogs.length === 0) return;
+    const exportToPDF = (rows?: AuditLog[]) => {
+        const exportRows = rows && rows.length > 0 ? rows : sortedLogs;
+        if (!exportRows || exportRows.length === 0) return;
         const doc = new jsPDF();
         doc.text("Audit Logs Report", 14, 15);
-        const tableColumn = ["User", "Action", "Entity", "Timestamp", "IP Address", "Status"];
-        const tableRows = sortedLogs.map(log => [
+        const tableColumn = ["User", "Action", "Details", "Entity", "Timestamp", "IP Address", "Status"];
+        const tableRows = exportRows.map(log => [
             log.user_id,
             log.action,
+            log.details ?? "",
             log.entity_id,
             formatAuditDate(log.timestamp),
             log.ip === "0:0:0:0:0:0:0:1" ? "127.0.0.1 (Local)" : log.ip,
@@ -102,6 +111,7 @@ const AuditTable = forwardRef<AuditTableRef, Props>(function AuditTable({ logs =
                         <TableHead>Time Stamp</TableHead>
                         <TableHead>User</TableHead>
                         <TableHead>Action</TableHead>
+                        <TableHead>Details</TableHead>
                         <TableHead>Entity</TableHead>
                         <TableHead>IP Address</TableHead>
                         <TableHead>Status</TableHead>
@@ -110,14 +120,17 @@ const AuditTable = forwardRef<AuditTableRef, Props>(function AuditTable({ logs =
                 <TableBody>
                     {!Array.isArray(sortedLogs) || sortedLogs.length === 0 ? (
                         <TableRow>
-                            <TableCell colSpan={6} className="text-center py-4">No logs available.</TableCell>
+                            <TableCell colSpan={7} className="text-center py-4">No logs available.</TableCell>
                         </TableRow>
                     ) : (
                         sortedLogs.map((log) => (
                             <TableRow key={log.log_id}>
                                 <TableCell className="whitespace-nowrap">{formatAuditDate(log.timestamp)}</TableCell>
                                 <TableCell className="text-xs">{log.user_id}</TableCell>
-                                <TableCell>{log.action}</TableCell>
+                                <TableCell className="whitespace-nowrap font-medium">{log.action}</TableCell>
+                                <TableCell className="text-xs text-muted-foreground max-w-xs">
+                                    {log.details || "-"}
+                                </TableCell>
                                 <TableCell className="text-xs">{log.entity_id}</TableCell>
                                 <TableCell>{log.ip === "0:0:0:0:0:0:0:1" ? "127.0.0.1" : log.ip}</TableCell>
                                 <TableCell>

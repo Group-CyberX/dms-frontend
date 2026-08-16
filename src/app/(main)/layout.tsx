@@ -75,6 +75,7 @@ export default function MainLayout({
   const setProfilePicture = useAuthStore((state) => state.setProfilePicture);
 
   const [hydrated, setHydrated] = useState(false);
+  const [headerQuery, setHeaderQuery] = useState("");
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [selectedNotification, setSelectedNotification] = useState<NotificationItem | null>(null);
@@ -254,16 +255,33 @@ export default function MainLayout({
               <SidebarTrigger className="text-slate-700 hover:bg-slate-100" />
             </div>
 
-            {/* Center: Search Bar Container */}
+            {/* Center: Search Bar Container.
+                Hands the term to the Advanced Search page rather than searching
+                in place - that page owns the filters, the paging and the
+                history, so duplicating any of it here would only let the two
+                disagree. */}
             <div className="hidden md:flex items-center flex-1 max-w-md mx-4">
-              <div className="relative w-full">
+              <form
+                className="relative w-full"
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  const term = headerQuery.trim()
+                  router.push(term ? `/search?q=${encodeURIComponent(term)}` : '/search')
+                }}
+              >
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <input
-                  type="text"
+                  type="search"
+                  value={headerQuery}
+                  onChange={(event) => setHeaderQuery(event.target.value)}
+                  // A click alone opens Advanced Search, so the box is a way in
+                  // even before anything is typed.
+                  onClick={() => { if (pathname !== '/search') router.push('/search') }}
                   placeholder="Search documents, tasks, workflows..."
+                  aria-label="Search documents, tasks and workflows"
                   className="h-10 w-full rounded-md bg-slate-100 pl-10 pr-4 text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:ring-1 focus:ring-[#953002] border-0"
                 />
-              </div>
+              </form>
             </div>
 
             {/* Right Side: Actions & Profile */}

@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Loader } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/store/auth-store';
 import ApproveTaskDialog from '@/components/ui/workflow/approve-task-dialog';
 import RejectTaskDialog from '@/components/ui/workflow/reject-task-dialog';
-import { fetchWithAuth } from '@/lib/api-client';
+import { fetchWithAuth, getTaskSigningContext } from '@/lib/api-client';
 
 //Logged-in user details
 type CurrentUser = {
@@ -177,6 +178,7 @@ const formatCreatorLabel = (
 };
 
 export default function MyTasksPage() {
+  const router = useRouter();
   const token = useAuthStore((state) => state.accessToken);
   const hasHydrated = useAuthStore((state) => state.hasHydrated);
   const hasLoadedOnceRef = useRef(false);
@@ -433,7 +435,23 @@ export default function MyTasksPage() {
     setActionType(null);
   };
 
-  const openActionDialog = (task: TaskRow, nextAction: 'approve' | 'reject') => {
+  const openActionDialog = async (task: TaskRow, nextAction: 'approve' | 'reject') => {
+    // Approving a workflow that requires a signature is completed on the signing
+    // page, not in the comment dialog. Rejection never needs a signature.
+    if (nextAction === 'approve') {
+      try {
+        const context = await getTaskSigningContext(task.task.id);
+        if (context.requiresSignature) {
+          router.push(`/signature/${context.documentId}?taskId=${task.task.id}`);
+          return;
+        }
+      } catch (err) {
+        // If the check fails, fall through to the normal dialog rather than
+        // blocking the approver entirely.
+        console.error('Could not check signature requirement:', err);
+      }
+    }
+
     setActiveTask(task);
     setActionType(nextAction);
   };

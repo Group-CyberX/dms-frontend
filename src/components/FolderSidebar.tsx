@@ -15,12 +15,11 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
   getFolders,
-  getDocuments,
+  fetchFolderTree,
   createFolder as apiCreateFolder,
   deleteFolder as apiDeleteFolder,
   updateFolder as apiUpdateFolder,
   Folder,
-  Document,
   FolderTreeNode,
 } from "@/lib/api-client";
 import { FolderNode } from "@/components/FolderNode";
@@ -32,35 +31,6 @@ interface FolderSidebarProps {
   refreshKey?: number;
   /** Called after a folder delete moves documents to the recycle bin, so the parent can refresh its own document list */
   onDocumentsChanged?: () => void;
-}
-
-/**
- * Build a nested FolderTreeNode[] from the flat Folder[] list returned by
- * the existing GET /api/folders endpoint, combining with document counts
- * computed from the documents list.
- */
-function buildTree(
-  folders: Folder[],
-  documents: Document[],
-  parentId: string | null = null
-): FolderTreeNode[] {
-  return folders
-    .filter((f) => (f.parent_folder_id ?? null) === parentId)
-    .map((f) => {
-      const children = buildTree(folders, documents, f.folder_id);
-      const directCount = documents.filter(
-        (d) => !d.is_deleted && d.folder_id === f.folder_id
-      ).length;
-      return {
-        folder_id: f.folder_id,
-        name: f.name,
-        path: f.path,
-        parent_folder_id: f.parent_folder_id,
-        documentCount: directCount,
-        totalSize: 0,
-        children,
-      };
-    });
 }
 
 export function FolderSidebar({
@@ -118,15 +88,21 @@ export function FolderSidebar({
     setLoading(true);
     setError(null);
     try {
-      const [folders, documents] = await Promise.all([
+      // Flat folders drive the create/rename/delete dialogs, which only need
+      // names and parent ids. The tree itself - structure, and document
+      // counts rolled up per folder - comes from the backend rather than
+      // being recomputed here, because that recomputation used to run against
+      // "my documents only": a folder holding a teammate's upload undercounted,
+      // sometimes down to zero, even though the file was visibly there when
+      // the folder was opened through a different, unscoped endpoint.
+      const [folders, treeRoot] = await Promise.all([
         getFolders(),
-        getDocuments(),
+        fetchFolderTree(),
       ]);
-      const docs: Document[] = Array.isArray(documents) ? documents : [];
       const flds: Folder[] = Array.isArray(folders) ? folders : [];
       setFlatFolders(flds);
-      setAllDocCount(docs.filter((d) => !d.is_deleted).length);
-      setTree(buildTree(flds, docs, null));
+      setAllDocCount(treeRoot.documentCount);
+      setTree(treeRoot.children);
     } catch (err) {
       const msg =
         err instanceof Error

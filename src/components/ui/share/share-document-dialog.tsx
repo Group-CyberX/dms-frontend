@@ -210,10 +210,19 @@ export default function ShareDocumentDialog({
                                 value={accessLevel}
                                 onChange={(e) => {
                                     const selectedAccessLevel = e.target.value as AccessLevelValue;
-
-                                    // Automatically enable comments when "View & Comment" access is selected
                                     setAccessLevel(selectedAccessLevel);
-                                    setAllowComments(selectedAccessLevel === "COMMENT");
+
+                                    // Commenting is on by default for the levels that
+                                    // imply it, and the checkbox below still overrides.
+                                    //
+                                    // This used to read `=== "COMMENT"`, which silently
+                                    // turned comments OFF when Edit was chosen - so an
+                                    // Edit link had no comment drawer, and because the
+                                    // "Save as new version" button needs at least one
+                                    // annotation, edit links could never be saved.
+                                    setAllowComments(
+                                        selectedAccessLevel === "COMMENT" || selectedAccessLevel === "EDIT"
+                                    );
                                 }}
                                 className="w-full px-3 py-2.5 pr-10 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-[#8B4513] appearance-none bg-white"
                             >

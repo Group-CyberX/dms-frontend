@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { Search, History, FileText, ChevronLeft, ChevronRight, User, Calendar } from "lucide-react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 
 // Import your provided UI components
 import { Card, CardContent } from "@/components/ui/card"
@@ -30,51 +30,110 @@ interface SearchResult {
   tags?: string[];
 }
 
-export default function AdvancedSearch() {
+export default function AdvancedSearchPage() {
+  // useSearchParams needs a Suspense boundary, or the whole route is forced
+  // out of static rendering at build time.
+  return (
+    <React.Suspense fallback={<div className="p-6 text-sm text-slate-500">Loading search…</div>}>
+      <AdvancedSearch />
+    </React.Suspense>
+  )
+}
+
+function AdvancedSearch() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  // Set by the header search box, which hands the term over rather than
+  // searching in place.
+  const initialQuery = searchParams.get("q") ?? ""
   const [results, setResults] = React.useState<SearchResult[]>([])
   const [isLoading, setIsLoading] = React.useState(false)
   const [hasSearched, setHasSearched] = React.useState(false)
   const [currentQuery, setCurrentQuery] = React.useState<string>("")
   const [searchHistoryOpen, setSearchHistoryOpen] = React.useState(false)
   const [currentPage, setCurrentPage] = React.useState(1)
+  const [totalPages, setTotalPages] = React.useState(0)
+  const [totalResults, setTotalResults] = React.useState(0)
+  const [activeFilters, setActiveFilters] = React.useState<AdvancedSearchFilters | null>(null)
   const itemsPerPage = 10
   const searchFiltersRef = React.useRef(null)
 
-  // Calculate pagination values
-  const totalPages = Math.ceil(results.length / itemsPerPage)
+  // The server returns the page, so these describe the whole result set while
+  // `results` holds only what is on screen.
   const startIndex = (currentPage - 1) * itemsPerPage
-  const endIndex = startIndex + itemsPerPage
-  const paginatedResults = results.slice(startIndex, endIndex)
+  const endIndex = startIndex + results.length
+  const paginatedResults = results
 
-  const handleSearch = async (filters: AdvancedSearchFilters) => {
+  /**
+   * Runs the search on the server, one page at a time.
+   *
+   * The page number is part of the request now. Previously the whole result set
+   * was fetched and sliced in the browser, so "10 per page" only affected what
+   * was drawn - every matching document had already been downloaded.
+   */
+  const runSearch = React.useCallback(async (filters: AdvancedSearchFilters, page: number) => {
     setIsLoading(true)
     setHasSearched(true)
     setCurrentQuery(filters.query)
-    setCurrentPage(1)
     try {
-      const response = await fetchWithAuth('http://localhost:8081/api/search/advanced', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(filters)
-      })
+      const response = await fetchWithAuth(
+        `http://localhost:8081/api/search/advanced?page=${page - 1}&size=${itemsPerPage}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(filters)
+        }
+      )
 
       if (!response.ok) {
         console.error(`Backend Error: ${response.status}`)
         setResults([])
+        setTotalPages(0)
+        setTotalResults(0)
         return
       }
 
       const data = await response.json()
-      setResults(Array.isArray(data) ? data : [])
+      setResults(data?.content ?? [])
+      setTotalPages(data?.totalPages ?? 0)
+      setTotalResults(data?.totalElements ?? 0)
     } catch (error) {
       console.error("Search failed:", error)
       setResults([])
+      setTotalPages(0)
+      setTotalResults(0)
     } finally {
       setIsLoading(false)
     }
+  }, [])
+
+  // A new set of filters always starts at page one.
+  const handleSearch = (filters: AdvancedSearchFilters) => {
+    setActiveFilters(filters)
+    setCurrentPage(1)
+    runSearch(filters, 1)
+  }
+
+  // Arriving from the header with ?q=… runs that search straight away, so the
+  // results are on screen rather than the term merely being pre-typed.
+  React.useEffect(() => {
+    if (!initialQuery.trim()) return
+    const filters: AdvancedSearchFilters = {
+      query: initialQuery, documentType: "", status: "",
+      owner: "", signatureStatus: "", dateRange: "", tags: "",
+    }
+    setActiveFilters(filters)
+    setCurrentPage(1)
+    runSearch(filters, 1)
+  }, [initialQuery, runSearch])
+
+  // Moving between pages re-runs the same query for that page.
+  const goToPage = (page: number) => {
+    if (!activeFilters || page < 1 || page > totalPages) return
+    setCurrentPage(page)
+    runSearch(activeFilters, page)
   }
 
   const handleResultClick = async (documentId: string, title: string) => {
@@ -112,14 +171,14 @@ export default function AdvancedSearch() {
       </div>
 
       
-      <SearchFilters ref={searchFiltersRef} onSearch={handleSearch} />
+      <SearchFilters ref={searchFiltersRef} onSearch={handleSearch} initialQuery={initialQuery} />
 
       {/*  Search Results Section */}
       <div className="space-y-4">
         {/* Results Header */}
         <div className="flex items-center justify-between border-b pb-4 border-slate-200">
           <h2 className="text-lg font-semibold text-slate-700">Search Results</h2>
-          <span className="text-sm font-medium text-slate-500">{results.length} documents found</span>
+          <span className="text-sm font-medium text-slate-500">{totalResults} documents found</span>
         </div>
 
         
@@ -244,13 +303,13 @@ export default function AdvancedSearch() {
             {totalPages > 1 && (
               <div className="flex items-center justify-between border-t pt-6 border-slate-200">
                 <div className="text-sm text-slate-600">
-                  Showing {startIndex + 1} to {Math.min(endIndex, results.length)} of {results.length} results
+                  Showing {startIndex + 1} to {endIndex} of {totalResults} results
                 </div>
                 <div className="flex items-center gap-2">
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                    onClick={() => goToPage(currentPage - 1)}
                     disabled={currentPage === 1}
                     className="gap-1"
                   >
@@ -264,7 +323,7 @@ export default function AdvancedSearch() {
                         key={page}
                         variant={page === currentPage ? "default" : "outline"}
                         size="sm"
-                        onClick={() => setCurrentPage(page)}
+                        onClick={() => goToPage(page)}
                         className="w-9 h-9 p-0"
                       >
                         {page}
@@ -275,7 +334,7 @@ export default function AdvancedSearch() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                    onClick={() => goToPage(currentPage + 1)}
                     disabled={currentPage === totalPages}
                     className="gap-1"
                   >

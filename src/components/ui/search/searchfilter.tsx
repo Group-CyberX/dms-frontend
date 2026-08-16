@@ -162,8 +162,10 @@ function AutocompleteField({
 // Named export with useImperativeHandle
 export const SearchFilters = React.forwardRef<SearchFiltersRef, {
   onSearch?: (filters: AdvancedSearchFilters) => void
-}>(({ onSearch }, ref) => {
-  const [query, setQuery] = React.useState("")
+  /** Seeds the box when arriving from the header search with a term already typed. */
+  initialQuery?: string
+}>(({ onSearch, initialQuery = "" }, ref) => {
+  const [query, setQuery] = React.useState(initialQuery)
   const [documentType, setDocumentType] = React.useState("")
   const [status, setStatus] = React.useState("")
   const [owner, setOwner] = React.useState("")
