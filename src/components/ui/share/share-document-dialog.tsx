@@ -203,7 +203,7 @@ export default function ShareDocumentDialog({
                     <div>
                         <label className="flex items-center gap-2 text-sm font-medium text-gray-800 mb-2">
                             <Lock className="w-4 h-4" />
-                            Access Level
+                            Access Level <span className="text-red-500">*</span>
                         </label>
                         <div className="relative">
                             <select
@@ -224,6 +224,7 @@ export default function ShareDocumentDialog({
                                         selectedAccessLevel === "COMMENT" || selectedAccessLevel === "EDIT"
                                     );
                                 }}
+                                required
                                 className="w-full px-3 py-2.5 pr-10 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-[#8B4513] appearance-none bg-white"
                             >
                                 <option value="" disabled hidden>
@@ -241,12 +242,13 @@ export default function ShareDocumentDialog({
                     <div>
                         <label className="flex items-center gap-2 text-sm font-medium text-gray-800 mb-2">
                             <Calendar className="w-4 h-4" />
-                            Link Expiry
+                            Link Expiry <span className="text-red-500">*</span>
                         </label>
                         <div className="relative">
                             <select
                                 value={linkExpiry}
                                 onChange={(e) => setLinkExpiry(e.target.value === "" ? "" : Number(e.target.value))}
+                                required
                                 className="w-full px-3 py-2.5 pr-10 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-[#8B4513] appearance-none bg-white"
                             >
                                 <option value="" disabled hidden>

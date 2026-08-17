@@ -89,12 +89,15 @@ export function FolderSidebar({
     setError(null);
     try {
       // Flat folders drive the create/rename/delete dialogs, which only need
-      // names and parent ids. The tree itself - structure, and document
-      // counts rolled up per folder - comes from the backend rather than
-      // being recomputed here, because that recomputation used to run against
-      // "my documents only": a folder holding a teammate's upload undercounted,
-      // sometimes down to zero, even though the file was visibly there when
-      // the folder was opened through a different, unscoped endpoint.
+      // names and parent ids. The tree - structure plus the counts rolled up
+      // per folder - comes from the backend rather than being recomputed here.
+      //
+      // The counts are deliberately left at the default scope, "my documents",
+      // because that is what the list next to them shows (getDocuments() sends
+      // no `all` flag). Asking for one scope here and rendering the other
+      // beside it is what made a folder claim 26 files against a list of 3.
+      // If that list is ever switched to show everyone's documents, this call
+      // has to be given `true` in the same change.
       const [folders, treeRoot] = await Promise.all([
         getFolders(),
         fetchFolderTree(),

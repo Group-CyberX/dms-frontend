@@ -198,16 +198,21 @@ export interface FolderTreeNode {
 }
 
 /**
- * Fetch the full nested folder tree, with recursive document counts and
- * sizes already rolled up by the backend across every active document in
- * the system (not scoped to the caller).
+ * Fetch the full nested folder tree, with recursive document counts and sizes
+ * already rolled up by the backend.
+ *
+ * `all` scopes the counts, and means exactly what it means on getDocuments():
+ * omitted or false counts only your own documents, true counts everyone's.
+ * Pass whichever scope the list you are showing beside these counts uses -
+ * they disagreed before, and a folder badge read 26 next to a list of 3.
  *
  * The response is a single synthetic root — `folder_id: null`, its
- * `documentCount` is the whole library's total, and `children` holds the
+ * `documentCount` is the total for that scope, and `children` holds the
  * real top-level folders — rather than an array of roots.
  */
-export async function fetchFolderTree(): Promise<FolderTreeNode> {
-  const response = await fetchWithAuth(`${API_BASE_URL}/folders/tree`, {
+export async function fetchFolderTree(all = false): Promise<FolderTreeNode> {
+  const query = all ? "?all=true" : "";
+  const response = await fetchWithAuth(`${API_BASE_URL}/folders/tree${query}`, {
     headers: getAuthHeader(),
   });
 

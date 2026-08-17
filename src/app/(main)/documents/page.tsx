@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { UploadDocumentDialog } from '@/components/ui/upload-document-dialog';
+import ShareDocumentDialog from '@/components/ui/share/share-document-dialog';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import {
   Plus, Eye, Download, Edit2, FileText, Loader, Trash2, Share2, MoveRight,
@@ -217,9 +218,10 @@ interface DocCardProps {
   onView: () => void;
   onDelete: () => void;
   onMove: () => void;
+  onShare: () => void;
 }
 
-function DocCard({ doc, selected, status, onToggle, onView, onDelete, onMove }: DocCardProps) {
+function DocCard({ doc, selected, status, onToggle, onView, onDelete, onMove, onShare }: DocCardProps) {
   const fileType = getFileType(doc.title);
   const colorClass = getFileColor(doc.title);
 
@@ -270,7 +272,7 @@ function DocCard({ doc, selected, status, onToggle, onView, onDelete, onMove }: 
             <DropdownMenuItem className="gap-2 text-xs" onClick={onMove}>
               <MoveRight size={12} /> Move
             </DropdownMenuItem>
-            <DropdownMenuItem className="gap-2 text-xs">
+            <DropdownMenuItem className="gap-2 text-xs" onClick={onShare}>
               <Share2 size={12} /> Share
             </DropdownMenuItem>
             <DropdownMenuSeparator />
@@ -339,6 +341,9 @@ export default function DocumentsPage() {
 
   const [selectedDocIds, setSelectedDocIds] = useState<Set<string>>(new Set());
   const [moveSheetOpen, setMoveSheetOpen] = useState(false);
+  // Which document the share dialog is for. Held as the document rather than
+  // just an id so the dialog can show its title without looking it up again.
+  const [shareTarget, setShareTarget] = useState<{ id: string; title: string } | null>(null);
   const [moveSingleDocId, setMoveSingleDocId] = useState<string | null>(null);
 
   // Auth guard
@@ -686,7 +691,7 @@ export default function DocumentsPage() {
                               <button onClick={(e) => { e.stopPropagation(); handleDelete(doc.document_id, doc.title); }} className="p-1.5 hover:bg-red-50 rounded transition" title="Delete"><Trash2 className="w-3.5 h-3.5 text-red-400" /></button>
                             )}
                             {hasPermission(permissions, role, "canShareDocument") && (
-                              <button className="p-1.5 hover:bg-gray-100 rounded transition" title="Share"><Share2 className="w-3.5 h-3.5 text-gray-400" /></button>
+                              <button onClick={(e) => { e.stopPropagation(); setShareTarget({ id: doc.document_id, title: doc.title }); }} className="p-1.5 hover:bg-gray-100 rounded transition" title="Share"><Share2 className="w-3.5 h-3.5 text-gray-400" /></button>
                             )}
                           </div>
                         </td>
@@ -710,6 +715,7 @@ export default function DocumentsPage() {
                     onView={() => router.push(`/documents/${doc.document_id}`)}
                     onDelete={() => handleDelete(doc.document_id, doc.title)}
                     onMove={() => openMoveSheet(doc.document_id)}
+                    onShare={() => setShareTarget({ id: doc.document_id, title: doc.title })}
                   />
                 ))}
               </div>
@@ -732,6 +738,20 @@ export default function DocumentsPage() {
         onClose={() => setMoveSheetOpen(false)}
         onMove={handleMove}
       />
+
+      {/* Share dialog.
+          Mounted only while a document is targeted, rather than kept open with
+          a changing id: the dialog holds the generated link, token and password
+          in its own state, and a dialog that survived between documents would
+          offer the previous document's link for the next one. */}
+      {shareTarget && (
+        <ShareDocumentDialog
+          open
+          onOpenChange={(open) => { if (!open) setShareTarget(null); }}
+          documentId={shareTarget.id}
+          documentTitle={shareTarget.title}
+        />
+      )}
     </div>
   );
 }
