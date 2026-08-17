@@ -57,7 +57,9 @@ type Tool = 'comment' | 'text';
 type PendingAnchor = { pageNumber: number; x: number; y: number };
 
 const API = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8081/api").replace(/\/api\/?$/, "");
-const COMMENT_POLL_MS = 5000;
+// Comments are a review conversation, not a live cursor: 15s is well inside
+// what a reviewer notices, and a third of the connection pressure of 5s.
+const COMMENT_POLL_MS = 15000;
 
 export default function SharePage() {
   const params = useParams();
@@ -193,10 +195,41 @@ export default function SharePage() {
   }, [shareToken]);
 
   // Live collaboration: other reviewers' comments appear without a refresh.
+  //
+  // A shared link is normally left open in a background tab for long stretches,
+  // and every poll takes one of the few database connections the whole
+  // application shares. So polling runs only while the tab is actually being
+  // looked at, and catches up in one request when the reader returns.
   useEffect(() => {
     if (!data || !canComment) return;
-    const id = setInterval(loadComments, COMMENT_POLL_MS);
-    return () => clearInterval(id);
+
+    let timer: ReturnType<typeof setInterval> | null = null;
+
+    const stop = () => {
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+    };
+
+    const sync = () => {
+      if (window.document.visibilityState === "visible") {
+        if (!timer) {
+          loadComments();
+          timer = setInterval(loadComments, COMMENT_POLL_MS);
+        }
+      } else {
+        stop();
+      }
+    };
+
+    sync();
+    window.document.addEventListener("visibilitychange", sync);
+
+    return () => {
+      stop();
+      window.document.removeEventListener("visibilitychange", sync);
+    };
   }, [data, canComment, loadComments]);
 
   const handleDownload = async () => {

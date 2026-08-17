@@ -19,6 +19,9 @@ interface DocumentPreviewProps {
 
 export function DocumentPreview({ url, type, title }: DocumentPreviewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  // The parsed document, kept across page and zoom changes.
+  const pdfRef = useRef<Awaited<ReturnType<typeof pdfjsLib.getDocument>['promise']> | null>(null);
+  const [pdfLoadedAt, setPdfLoadedAt] = useState<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
@@ -30,75 +33,91 @@ export function DocumentPreview({ url, type, title }: DocumentPreviewProps) {
   const minZoom = 50;
   const maxZoom = 300;
 
-  // Render PDF pages
+  // Open the PDF once per document. Parsing is the expensive part, so it must
+  // not be redone when the reader simply turns a page or changes the zoom.
   useEffect(() => {
-    if (!url || type !== 'pdf') return;
+    if (!url || type !== 'pdf') {
+      pdfRef.current = null;
+      return;
+    }
 
-    let isMounted = true;
-    let renderTask: any = null;
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
 
-    const loadPdf = async () => {
+    const loadingTask = pdfjsLib.getDocument(url);
+
+    loadingTask.promise
+      .then((pdf) => {
+        if (cancelled) {
+          pdf.destroy();
+          return;
+        }
+        pdfRef.current = pdf;
+        setTotalPages(pdf.numPages);
+        setCurrentPage(1);
+        setPdfLoadedAt(Date.now());
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        console.error('Error loading PDF:', err);
+        setError(`Failed to load PDF: ${err instanceof Error ? err.message : String(err)}`);
+        setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+      loadingTask.destroy();
+      pdfRef.current = null;
+    };
+  }, [url, type]);
+
+  // Draw the requested page. Only this runs when the page or zoom changes.
+  useEffect(() => {
+    const pdf = pdfRef.current;
+    if (!pdf || type !== 'pdf' || !pdfLoadedAt) return;
+
+    let cancelled = false;
+    let renderTask: ReturnType<Awaited<ReturnType<typeof pdf.getPage>>['render']> | null = null;
+
+    const renderPage = async () => {
       try {
         setLoading(true);
-        setError(null);
-        const pdf = await pdfjsLib.getDocument(url).promise;
-        if (!isMounted) return;
-
-        setTotalPages(pdf.numPages);
-
         const page = await pdf.getPage(currentPage);
-        if (!isMounted) return;
+        if (cancelled) return;
 
         const viewport = page.getViewport({ scale: (zoom / 100) * 1.5 });
-
         const canvas = canvasRef.current;
-        if (!canvas || !isMounted) return;
+        if (!canvas || cancelled) return;
 
         canvas.width = viewport.width;
         canvas.height = viewport.height;
 
         const context = canvas.getContext('2d');
-        if (!context || !isMounted) return;
+        if (!context || cancelled) return;
 
-        // Cancel previous render task if it exists
-        if (renderTask) {
-          renderTask.cancel();
-        }
-
-        renderTask = page.render({
-          canvas: canvas,
-          viewport: viewport,
-        });
-
+        renderTask = page.render({ canvas, viewport });
         await renderTask.promise;
-      } catch (err: any) {
-        // Don't show error if it's a cancellation
-        if (err?.name === 'RenderingCancelledException') {
-          console.log('PDF render cancelled');
+      } catch (err: unknown) {
+        if (cancelled || (err as { name?: string })?.name === 'RenderingCancelledException') {
           return;
         }
-        if (isMounted) {
-          console.error('Error rendering PDF:', err);
-          const errorMessage = err instanceof Error ? err.message : String(err);
-          setError(`Failed to render PDF: ${errorMessage}`);
-        }
+        console.error('Error rendering PDF page:', err);
+        setError(`Failed to render PDF: ${err instanceof Error ? err.message : String(err)}`);
       } finally {
-        if (isMounted) {
+        if (!cancelled) {
           setLoading(false);
         }
       }
     };
 
-    loadPdf();
+    renderPage();
 
-    // Cleanup: cancel render and reset mounted flag
     return () => {
-      isMounted = false;
-      if (renderTask) {
-        renderTask.cancel();
-      }
+      cancelled = true;
+      renderTask?.cancel();
     };
-  }, [url, type, currentPage, zoom]);
+  }, [type, currentPage, zoom, pdfLoadedAt]);
 
   // Load DOCX content
   useEffect(() => {

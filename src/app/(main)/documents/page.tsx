@@ -15,8 +15,7 @@ import {
   getFolders,
   Document,
   Folder,
-  getWorkflows,
-  WorkflowInstance,
+  getWorkflowStatusByDocument,
   deleteDocument,
   moveDocuments,
   FolderTreeNode,
@@ -363,7 +362,7 @@ export default function DocumentsPage() {
 
     const [docsResult, workflowsResult] = await Promise.allSettled([
       getDocuments(),
-      getWorkflows(),
+      getWorkflowStatusByDocument(),
     ]);
 
     if (docsResult.status === 'fulfilled') {
@@ -376,16 +375,11 @@ export default function DocumentsPage() {
 
     if (workflowsResult.status === 'fulfilled') {
       try {
-        const wfList: WorkflowInstance[] = Array.isArray(workflowsResult.value) ? workflowsResult.value : [];
-        const map = new Map<string, { id: number; status?: string }>();
-        wfList.forEach((w) => {
-          const docId = (w.documentId ?? w.document_id ?? '') as string;
-          if (!docId) return;
-          const existing = map.get(docId);
-          if (!existing || (w.id && w.id > existing.id)) map.set(docId, { id: w.id, status: w.status });
-        });
+        // Already one row per document, latest first, resolved by the server.
         const statusRecord: Record<string, string> = {};
-        map.forEach((v, k) => { statusRecord[k] = v.status ?? ''; });
+        for (const row of workflowsResult.value) {
+          statusRecord[row.documentId] = row.status ?? '';
+        }
         setDocWorkflowStatus(statusRecord);
       } catch (e) {
         console.warn('Failed to build workflow status map', e);
