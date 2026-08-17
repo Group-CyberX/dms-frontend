@@ -1,8 +1,9 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { fetchWithAuth } from '@/lib/api-client';
+import { fetchWithAuth, getTaskSigningContext } from '@/lib/api-client';
 import { AlertCircle, CheckCircle } from 'lucide-react';
 
 type Props = {
@@ -18,6 +19,7 @@ export default function ApprovalActions({
   onApprovalComplete,
   statusMessage,
 }: Props) {
+  const router = useRouter();
   const [comment, setComment] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,6 +30,14 @@ export default function ApprovalActions({
       setLoading(true);
       setError(null);
       setSuccess(null);
+
+      // Workflows can demand a placed signature. When they do, the approval is
+      // completed on the signing page instead of here.
+      const context = await getTaskSigningContext(taskId);
+      if (context.requiresSignature) {
+        router.push(`/signature/${context.documentId}?taskId=${taskId}`);
+        return;
+      }
 
       const response = await fetchWithAuth(
         `http://localhost:8081/api/tasks/${taskId}/approve`,

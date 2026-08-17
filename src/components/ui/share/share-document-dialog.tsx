@@ -203,18 +203,28 @@ export default function ShareDocumentDialog({
                     <div>
                         <label className="flex items-center gap-2 text-sm font-medium text-gray-800 mb-2">
                             <Lock className="w-4 h-4" />
-                            Access Level
+                            Access Level <span className="text-red-500">*</span>
                         </label>
                         <div className="relative">
                             <select
                                 value={accessLevel}
                                 onChange={(e) => {
                                     const selectedAccessLevel = e.target.value as AccessLevelValue;
-
-                                    // Automatically enable comments when "View & Comment" access is selected
                                     setAccessLevel(selectedAccessLevel);
-                                    setAllowComments(selectedAccessLevel === "COMMENT");
+
+                                    // Commenting is on by default for the levels that
+                                    // imply it, and the checkbox below still overrides.
+                                    //
+                                    // This used to read `=== "COMMENT"`, which silently
+                                    // turned comments OFF when Edit was chosen - so an
+                                    // Edit link had no comment drawer, and because the
+                                    // "Save as new version" button needs at least one
+                                    // annotation, edit links could never be saved.
+                                    setAllowComments(
+                                        selectedAccessLevel === "COMMENT" || selectedAccessLevel === "EDIT"
+                                    );
                                 }}
+                                required
                                 className="w-full px-3 py-2.5 pr-10 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-[#8B4513] appearance-none bg-white"
                             >
                                 <option value="" disabled hidden>
@@ -232,12 +242,13 @@ export default function ShareDocumentDialog({
                     <div>
                         <label className="flex items-center gap-2 text-sm font-medium text-gray-800 mb-2">
                             <Calendar className="w-4 h-4" />
-                            Link Expiry
+                            Link Expiry <span className="text-red-500">*</span>
                         </label>
                         <div className="relative">
                             <select
                                 value={linkExpiry}
                                 onChange={(e) => setLinkExpiry(e.target.value === "" ? "" : Number(e.target.value))}
+                                required
                                 className="w-full px-3 py-2.5 pr-10 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-[#8B4513] appearance-none bg-white"
                             >
                                 <option value="" disabled hidden>

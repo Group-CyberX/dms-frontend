@@ -20,6 +20,7 @@ type WorkflowTemplate = {
   workflowType?: string;
   createdBy?: string;
   systemTemplate?: boolean;
+  requiresSignature?: boolean;
 };
 
 type WorkflowTemplateStep = {
@@ -57,6 +58,10 @@ export default function CreateWorkflowTemplateDialog({
   const [numberOfSteps, setNumberOfSteps] = useState(1);
   const [documentType, setDocumentType] = useState("");
   const [workflowType, setWorkflowType] = useState<'SEQUENTIAL' | 'PARALLEL'>('SEQUENTIAL');
+  // When set, approvers must place a signature on the PDF before the approval
+  // is accepted - clicking Approve opens the signing page instead of the
+  // comment dialog.
+  const [requiresSignature, setRequiresSignature] = useState(false);
   const [stepApprovers, setStepApprovers] = useState<StepApprover[]>([emptyStep(1)]);
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(false);
@@ -97,6 +102,7 @@ export default function CreateWorkflowTemplateDialog({
     setNumberOfSteps(1);
     setDocumentType("");
     setWorkflowType('SEQUENTIAL');
+    setRequiresSignature(false);
     setStepApprovers([emptyStep(1)]);
   };
 
@@ -122,7 +128,7 @@ export default function CreateWorkflowTemplateDialog({
       const templateData = await safeJson(templateResponse);
       const stepsData = await safeJson(stepsResponse);
       const parsedSteps = Array.isArray(stepsData) ? stepsData : [];
-      
+
       // Map steps by step order
       const templateStepMap = new Map<number, WorkflowTemplateStep>();
 
@@ -140,6 +146,7 @@ export default function CreateWorkflowTemplateDialog({
       setDescription(templateData?.description ?? "");
       setDocumentType(templateData?.documentType ?? "");
       setWorkflowType(templateData?.workflowType ?? 'SEQUENTIAL');
+      setRequiresSignature(Boolean(templateData?.requiresSignature));
       setNumberOfSteps(resolvedStepCount);
 
       // Generate step approvers list
@@ -229,7 +236,7 @@ export default function CreateWorkflowTemplateDialog({
     }
 
     setStepApprovers(updated);
-   
+
   }, [numberOfSteps]);
 
   const handleClose = () => {
@@ -280,6 +287,7 @@ export default function CreateWorkflowTemplateDialog({
       workflowType,
       createdBy: "DOC ADMIN",
       systemTemplate: true,
+      requiresSignature,
       stepApprovers,
     };
 
@@ -343,7 +351,7 @@ export default function CreateWorkflowTemplateDialog({
             <X className="h-5 w-5" />
           </button>
         </div>
-        
+
         <div className="px-6 pb-6 pt-6">
           {initialLoading ? (
             <div className="py-10 text-center text-sm text-gray-500">Loading template...</div>
@@ -353,7 +361,7 @@ export default function CreateWorkflowTemplateDialog({
               {/* Template Name */}
               <div>
                 <label className="mb-2 block text-sm font-medium text-[#3b3b3b]">
-                  Workflow Template Name <span className="text-[#3b3b3b]">*</span>
+                  Workflow Template Name <span className="text-[red]">*</span>
                 </label>
                 <input
                   type="text"
@@ -367,7 +375,7 @@ export default function CreateWorkflowTemplateDialog({
               {/* Description */}
               <div>
                 <label className="mb-2 block text-sm font-medium text-[#3b3b3b]">
-                  Description <span className="text-[#3b3b3b]">*</span>
+                  Description <span className="text-[red]">*</span>
                 </label>
                 <textarea
                   placeholder="Describe the workflow purpose and when it applies"
@@ -382,7 +390,7 @@ export default function CreateWorkflowTemplateDialog({
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="mb-2 block text-sm font-medium text-[#3b3b3b]">
-                    Number of Steps <span className="text-[#3b3b3b]">*</span>
+                    Number of Steps <span className="text-[red]">*</span>
                   </label>
                   <input
                     type="number"
@@ -398,7 +406,7 @@ export default function CreateWorkflowTemplateDialog({
                 {/* Document Type Selection */}
                 <div>
                   <label className="mb-2 block text-sm font-medium text-[#3b3b3b]">
-                    Document Type <span className="text-[#3b3b3b]">*</span>
+                    Document Type <span className="text-[red]">*</span>
                   </label>
                   <div className="relative">
                     <select
@@ -422,7 +430,7 @@ export default function CreateWorkflowTemplateDialog({
 
               {/* Workflow Type Selection */}
               <div>
-                <label className="mb-2 block text-sm font-medium text-[#3b3b3b]">Workflow Type <span className="text-[#3b3b3b]">*</span></label>
+                <label className="mb-2 block text-sm font-medium text-[#3b3b3b]">Workflow Type <span className="text-[red]">*</span></label>
                 <div className="relative w-48">
                   <select
                     value={workflowType}
@@ -437,6 +445,28 @@ export default function CreateWorkflowTemplateDialog({
                   </select>
                   <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
                 </div>
+              </div>
+
+              {/* Digital signature requirement */}
+              <div className="rounded-xl border border-[#e1e1e1] px-5 py-4">
+                <label className="flex cursor-pointer items-start gap-3">
+                  <input
+                    type="checkbox"
+                    checked={requiresSignature}
+                    onChange={(e) => setRequiresSignature(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-[#8B2E00]"
+                  />
+                  <span>
+                    <span className="block text-sm font-medium text-[#3b3b3b]">
+                      Require a digital signature to approve
+                    </span>
+                    <span className="mt-1 block text-xs leading-relaxed text-[#666666]">
+                      Approvers are taken to the signing page to place their signature on the
+                      document. The signature is written into the PDF and saved as a new version.
+                      Applies to PDF documents only.
+                    </span>
+                  </span>
+                </label>
               </div>
 
               {/* Approver Selection for Each Step */}
@@ -467,11 +497,11 @@ export default function CreateWorkflowTemplateDialog({
                               prev.map((currentStep) =>
                                 currentStep.stepOrder === step.stepOrder
                                   ? {
-                                      ...currentStep,
-                                      approverUserId: e.target.value,
-                                      approverName: selectedUser?.username ?? "",
-                                      approverRole: selectedUser ? getRoleName(selectedUser) : "",
-                                    }
+                                    ...currentStep,
+                                    approverUserId: e.target.value,
+                                    approverName: selectedUser?.username ?? "",
+                                    approverRole: selectedUser ? getRoleName(selectedUser) : "",
+                                  }
                                   : currentStep
                               )
                             );
@@ -503,7 +533,7 @@ export default function CreateWorkflowTemplateDialog({
                   ))}
                 </div>
               </div>
-                
+
               <div className="flex justify-end gap-3 pt-2">
                 <button
                   type="button"

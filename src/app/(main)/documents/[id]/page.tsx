@@ -10,6 +10,8 @@ import ApprovalActions from '@/components/ui/workflow/approval-actions';
 import { DocumentPreview } from '@/components/ui/DocumentPreview';
 import { useAuthStore } from '@/store/auth-store';
 import { hasPermission } from '@/lib/access-control';
+import { useDocumentLock } from '@/hooks/use-document-lock';
+import { unlockDocument, getDocumentErpLinks, getTaskContext, type ErpDocumentLink } from '@/lib/api-client';
 import {
   ArrowLeft,
   Share2,
@@ -23,6 +25,7 @@ import {
   Upload,
   X,
   CheckCircle,
+  Link2,
 } from 'lucide-react';
 
 export default function DocumentDetailPage() {
@@ -33,6 +36,39 @@ export default function DocumentDetailPage() {
   const taskId = searchParams?.get('taskId');
   const role = useAuthStore((state) => state.role);
   const permissions = useAuthStore((state) => state.permissions);
+
+  // Holds the document while this page is open, so a second person opening it
+  // gets read-only access instead of silently overwriting the first.
+  const lock = useDocumentLock(documentId);
+
+  // ERP transactions this document is attached to. Empty for documents with no
+  // match, in which case the panel stays hidden.
+  const [erpLinks, setErpLinks] = useState<ErpDocumentLink[]>([]);
+
+  useEffect(() => {
+    if (!documentId) return;
+    getDocumentErpLinks(documentId)
+      .then(setErpLinks)
+      .catch(() => setErpLinks([])); // ERP is optional - never block the page
+  }, [documentId]);
+
+  // Changing the document needs both the permission and the lock. Combining
+  // them here keeps every control consistent instead of checking two things in
+  // six different places.
+  const canEditNow = hasPermission(permissions, role, "canEditDocument") && lock.canEdit;
+
+  /** Shown only when someone else is holding the document. */
+  const canForceUnlock = hasPermission(permissions, role, "canEditDocument");
+
+  /** Admin override for a lock left behind by someone who never came back. */
+  const forceUnlock = async () => {
+    try {
+      await unlockDocument(documentId);
+      await lock.refresh();
+    } catch {
+      alert('Could not release the lock.');
+    }
+  };
 
   const [document, setDocument] = useState<Document | null>(null);
   const [versions, setVersions] = useState<DocumentVersion[]>([]);
@@ -210,85 +246,15 @@ export default function DocumentDetailPage() {
         setWorkflowStatus(null);
       }
 
-      // If taskId is present, fetch tasks for the document workflows to find the specific task status
-      if (taskId) {
-        const [userMeRes, tasksNestedRes] = await Promise.all([
-          fetchWithAuth('http://localhost:8081/api/users/me'),
-          Promise.all(
-            docWorkflows.map(async (w) => {
-              try {
-                const res = await fetchWithAuth(`http://localhost:8081/api/tasks/instance/${w.id}`);
-                if (res.ok) {
-                  const data = await res.json();
-                  return { workflow: w, tasks: Array.isArray(data) ? data : [] };
-                }
-              } catch (err) {
-                console.error('Error fetching tasks for workflow:', w.id, err);
-              }
-              return { workflow: w, tasks: [] };
-            })
-          )
-        ]);
-
-        let currentUser = null;
-        if (userMeRes.ok) {
-          currentUser = await userMeRes.json();
-        }
-        
-        const tasksNested = tasksNestedRes;
-        
-        let foundTask = null;
-        let foundWorkflow = null;
-        for (const item of tasksNested) {
-          const found = item.tasks.find((t: any) => String(t.id) === String(taskId));
-          if (found) {
-            foundTask = found;
-            foundWorkflow = item.workflow;
-            break;
-          }
-        }
-
-        if (foundTask && foundWorkflow) {
-          const isWorkflowRejected = foundWorkflow.status?.toUpperCase() === 'REJECTED';
-          const isInactive = foundTask.status?.toUpperCase() === 'PENDING';
-          const isApproved = foundTask.status?.toUpperCase() === 'APPROVED';
-          const isRejected = foundTask.status?.toUpperCase() === 'REJECTED';
-
-          const dueDate = foundWorkflow.dueDate ? new Date(foundWorkflow.dueDate) : null;
-          const isOverdue = Boolean(
-            dueDate &&
-              foundWorkflow.status?.toUpperCase() !== 'APPROVED' &&
-              foundWorkflow.status?.toUpperCase() !== 'REJECTED' &&
-              dueDate.getTime() < new Date().setHours(0, 0, 0, 0)
-          );
-
-          const normalize = (value: string | null | undefined) => String(value ?? '').trim().toUpperCase();
-          const isAssignedToMe = currentUser
-            ? String(foundTask.userId) === String(currentUser.userId) ||
-              normalize(foundTask.userId) === normalize(currentUser.role)
-            : true;
-
-          let msg = '';
-          if (isWorkflowRejected && isInactive) {
-            msg = 'Workflow rejected';
-          } else if (isOverdue) {
-            msg = 'Due date expired';
-          } else if (isInactive) {
-            msg = 'Waiting for previous step';
-          } else if (!isAssignedToMe) {
-            msg = 'Waiting for previous step';
-          } else if (isApproved) {
-            msg = 'Task approved';
-          } else if (isRejected) {
-            msg = 'Task rejected';
-          } else if (isWorkflowRejected) {
-            msg = 'Workflow rejected';
-          }
-          setTaskStatusMessage(msg || null);
-        } else {
-          setTaskStatusMessage(null);
-        }
-      } else {
+      // The approval banner is resolved separately by a single request, and
+      // deliberately not awaited here so the document appears as soon as it has
+      // loaded rather than after the workflow lookups.
+      //
+      // This block used to fetch the current user plus one request per workflow
+      // attached to the document, then search the results for a task whose id it
+      // already knew - and nothing rendered until all of that came back. That is
+      // what made opening a document from My Tasks feel unresponsive.
+      if (!taskId) {
         setTaskStatusMessage(null);
       }
 
@@ -308,6 +274,28 @@ export default function DocumentDetailPage() {
       loadDocumentData(true);
     }
   }, [documentId, loadDocumentData]);
+
+  /**
+   * The approval banner, in one request, alongside the document rather than
+   * before it. If it fails the document is still perfectly usable, so a failure
+   * clears the banner instead of surfacing an error over the whole page.
+   */
+  useEffect(() => {
+    if (!taskId) return;
+
+    let cancelled = false;
+
+    getTaskContext(Number(taskId))
+      .then((context) => {
+        if (!cancelled) setTaskStatusMessage(context.statusMessage ?? null);
+      })
+      .catch((err) => {
+        console.error('Could not load task context:', err);
+        if (!cancelled) setTaskStatusMessage(null);
+      });
+
+    return () => { cancelled = true; };
+  }, [taskId]);
 
   const getFileExtension = (fileName: string): string => {
     const match = fileName.match(/\.(\w+)$/);
@@ -544,6 +532,27 @@ export default function DocumentDetailPage() {
 
   return (
     <div className="min-h-screen w-full bg-gray-100">
+
+      {/* Someone else holds this document for editing */}
+      {lock.isLockedByOther && (
+        <div className="flex items-center gap-2.5 border-b border-amber-200 bg-amber-50 px-6 py-3">
+          <Lock className="h-4 w-4 shrink-0 text-amber-700" />
+          <p className="text-sm text-amber-900">
+            This document is currently being edited by{' '}
+            <span className="font-semibold">{lock.lockedByUsername || 'another user'}</span>.
+            You have view-only access until they finish.
+          </p>
+          {canForceUnlock && (
+            <button
+              onClick={async () => { await forceUnlock(); }}
+              className="ml-auto rounded border border-amber-300 bg-white px-3 py-1 text-xs font-semibold text-amber-800 transition hover:bg-amber-100"
+            >
+              Force unlock
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="bg-white border-b border-gray-200">
         <div className="px-6 py-4">
           <button
@@ -581,7 +590,7 @@ export default function DocumentDetailPage() {
                 <Download className="w-4 h-4 mr-2" />
                 Download
               </Button>
-              {hasPermission(permissions, role, "canEditDocument") && (
+              {canEditNow && (
                 <Button 
                   className="bg-[#953002] hover:bg-[#7a2401] text-white"
                   onClick={() => setUploadDialogOpen(true)}
@@ -663,6 +672,60 @@ export default function DocumentDetailPage() {
               </div>
             </div>
 
+            {/* Linked ERP transaction - the document's connection to the business
+                record it belongs to. Populated automatically when OCR finds a
+                matching reference in the file. */}
+            {erpLinks.length > 0 && (
+              <div className="bg-white rounded-lg shadow-sm p-6">
+                <div className="mb-4 flex items-center gap-2">
+                  <Link2 className="h-4 w-4 text-[#8B2E00]" />
+                  <h2 className="text-lg font-semibold text-gray-900">Linked ERP Transaction</h2>
+                </div>
+
+                <div className="space-y-3">
+                  {erpLinks.map((link) => {
+                    let fields: Record<string, unknown> = {};
+                    try { fields = JSON.parse(link.payload || '{}'); } catch { /* show the ref alone */ }
+
+                    return (
+                      <div key={link.linkId} className="rounded-md border border-[#8B2E00]/20 bg-[#8B2E00]/5 p-4">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-mono text-sm font-bold text-[#8B2E00]">{link.externalRef}</span>
+                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                            link.linkType === 'AUTO'
+                              ? 'bg-green-100 text-green-700'
+                              : 'bg-slate-200 text-slate-600'}`}>
+                            {link.linkType === 'AUTO' ? 'AUTO-MATCHED' : 'MANUAL'}
+                          </span>
+                        </div>
+
+                        <p className="mt-0.5 text-[11px] uppercase tracking-wide text-gray-400">
+                          {link.transactionType?.replace('_', ' ') || 'TRANSACTION'}
+                        </p>
+
+                        {Object.keys(fields).length > 0 && (
+                          <dl className="mt-3 space-y-1.5 border-t border-[#8B2E00]/10 pt-3">
+                            {Object.entries(fields).map(([key, value]) => (
+                              <div key={key} className="flex justify-between gap-3 text-xs">
+                                <dt className="text-gray-500">{key}</dt>
+                                <dd className="font-medium text-gray-800">{String(value)}</dd>
+                              </div>
+                            ))}
+                          </dl>
+                        )}
+
+                        {link.linkType === 'AUTO' && link.matchedReference && (
+                          <p className="mt-3 text-[11px] italic text-gray-400">
+                            Matched “{link.matchedReference}” in the document text.
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             <div className="bg-white rounded-lg shadow-sm p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Tags</h2>
               <div className="space-y-3">
@@ -688,12 +751,12 @@ export default function DocumentDetailPage() {
                         handleAddTag();
                       }
                     }}
-                    disabled={!hasPermission(permissions, role, "canEditDocument")}
+                    disabled={!canEditNow}
                     className="flex-1 px-3 py-1 rounded border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#953002] disabled:bg-gray-100 disabled:cursor-not-allowed"
                   />
                   <button
                     onClick={handleAddTag}
-                    disabled={addingTag || !newTagInput.trim() || !hasPermission(permissions, role, "canEditDocument")}
+                    disabled={addingTag || !newTagInput.trim() || !canEditNow}
                     className="px-3 py-1 rounded text-sm font-medium bg-[#953002] text-white hover:bg-[#7a2401] disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Add
@@ -810,7 +873,7 @@ export default function DocumentDetailPage() {
                             <Download className="w-4 h-4 text-gray-600" />
                           )}
                         </button>
-                        {version.version_id !== document.current_version_id && hasPermission(permissions, role, "canEditDocument") && (
+                        {version.version_id !== document.current_version_id && canEditNow && (
                           <button 
                             onClick={() => handleRestoreVersion(version.version_id)}
                             disabled={restoringVersionId === version.version_id}

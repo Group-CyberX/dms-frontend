@@ -7,6 +7,13 @@ import { Button } from '@/components/ui/button';
 import CreateWorkflowTemplateDialog from '@/components/ui/workflow/create-workflow-template-dialog';
 import { useAuthStore } from '@/store/auth-store';
 import { hasPermission } from '@/lib/access-control';
+import {
+  MetadataTab,
+  RetentionTab,
+  ClassificationTab,
+  LocksTab,
+  TagsTab,
+} from '@/components/policies/policy-tabs';
 
 // Workflow Template structure
 type WorkflowTemplate = {
@@ -51,6 +58,11 @@ type TemplateRow = {
 export default function PoliciesPage() {
   const role = useAuthStore((state) => state.role);
   const permissions = useAuthStore((state) => state.permissions);
+
+  // The policy tabs gate their own controls on the same keys the workflow
+  // table already uses, so a viewer sees the data without the buttons.
+  const canEditPolicy = hasPermission(permissions, role, 'canEditPolicy');
+  const canDeletePolicy = hasPermission(permissions, role, 'canDeletePolicy');
 
   const [open, setOpen] = useState(false);
   const [editingTemplateId, setEditingTemplateId] = useState<number | null>(null);
@@ -367,10 +379,16 @@ export default function PoliciesPage() {
             <p className="py-8 text-center text-sm text-gray-500">No workflow templates found</p>
           )}
         </div>
+      ) : activeTab === 'metadata' ? (
+        <MetadataTab />
+      ) : activeTab === 'retention' ? (
+        <RetentionTab canEdit={canEditPolicy} />
+      ) : activeTab === 'classification' ? (
+        <ClassificationTab canEdit={canEditPolicy} />
+      ) : activeTab === 'lock' ? (
+        <LocksTab canEdit={canEditPolicy} />
       ) : (
-        <div className="rounded-xl bg-white p-10 text-center shadow">
-          <p className="text-lg font-medium text-gray-900">No data available yet</p>
-        </div>
+        <TagsTab canDelete={canDeletePolicy} />
       )}
 
       {/* Modal */}

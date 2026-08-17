@@ -198,10 +198,21 @@ export interface FolderTreeNode {
 }
 
 /**
- * Fetch the full nested folder tree for the current user
+ * Fetch the full nested folder tree, with recursive document counts and sizes
+ * already rolled up by the backend.
+ *
+ * `all` scopes the counts, and means exactly what it means on getDocuments():
+ * omitted or false counts only your own documents, true counts everyone's.
+ * Pass whichever scope the list you are showing beside these counts uses -
+ * they disagreed before, and a folder badge read 26 next to a list of 3.
+ *
+ * The response is a single synthetic root — `folder_id: null`, its
+ * `documentCount` is the total for that scope, and `children` holds the
+ * real top-level folders — rather than an array of roots.
  */
-export async function fetchFolderTree(): Promise<FolderTreeNode[]> {
-  const response = await fetchWithAuth(`${API_BASE_URL}/folders/tree`, {
+export async function fetchFolderTree(all = false): Promise<FolderTreeNode> {
+  const query = all ? "?all=true" : "";
+  const response = await fetchWithAuth(`${API_BASE_URL}/folders/tree${query}`, {
     headers: getAuthHeader(),
   });
 
@@ -1328,6 +1339,258 @@ export async function getDocumentJobs(documentId: string): Promise<ProcessingJob
   return response.json();
 }
 
+// ---------------------------------------------------------------------------
+// ERP integration
+//
+// The DMS talks to each configured ERP over plain REST. Everything the UI needs
+// is here; the credential is never returned by the API.
+// ---------------------------------------------------------------------------
+
+export interface ErpConnection {
+  connectionId: string;
+  name: string;
+  erpType: string;
+  apiEndpoint: string;
+  authType: string;
+  hasCredential: boolean;
+  isActive: boolean;
+  status: string;              // UNKNOWN | OK | FAILED
+  lastSyncedAt: string | null;
+  lastErrorMessage: string | null;
+  createdAt: string | null;
+}
+
+export interface ErpConnectionRequest {
+  name: string;
+  erpType: string;
+  apiEndpoint: string;
+  authType: string;
+  apiKey?: string;             // blank on update = keep the stored credential
+  isActive?: boolean;
+}
+
+export interface ErpMapping {
+  mappingId: string;
+  erpConnectionId: string;
+  entityType: string;
+  erpField: string;
+  dmsField: string;
+  isReferenceKey: boolean;
+}
+
+export interface ErpTransaction {
+  transactionId: string;
+  erpConnectionId: string;
+  transactionType: string;
+  externalRef: string;
+  payload: string;
+  syncStatus: string;
+  lastErrorMessage: string | null;
+  retryCount: number;
+  syncedAt: string;
+}
+
+export interface ErpDocumentLink {
+  linkId: string;
+  linkType: string;            // AUTO | MANUAL
+  matchedReference: string;
+  externalRef: string;
+  transactionType: string;
+  payload: string;
+  createdAt: string;
+}
+
+export interface ConnectionTestResult {
+  success: boolean;
+  attempts: number;
+  message: string;
+  testedAt: string;
+}
+
+export interface ErpSyncResult {
+  connectionId: string;
+  success: boolean;
+  transactionsFetched: number;
+  transactionsCreated: number;
+  documentsLinked: number;
+  message: string;
+  syncedAt: string;
+}
+
+async function erpRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetchWithAuth(`${API_BASE_URL}/erp${path}`, init);
+  if (!response.ok) {
+    let message = `ERP request failed (${response.status})`;
+    try {
+      const body = await response.json();
+      if (body?.message) message = body.message;
+    } catch {
+      /* no JSON body */
+    }
+    throw new Error(message);
+  }
+  return response.status === 204 ? (undefined as T) : response.json();
+}
+
+export const getErpConnections = () => erpRequest<ErpConnection[]>('/connections');
+
+export const createErpConnection = (data: ErpConnectionRequest) =>
+  erpRequest<ErpConnection>('/connections', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+
+export const updateErpConnection = (id: string, data: ErpConnectionRequest) =>
+  erpRequest<ErpConnection>(`/connections/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+
+export const deleteErpConnection = (id: string) =>
+  erpRequest<void>(`/connections/${id}`, { method: 'DELETE' });
+
+export const testErpConnection = (id: string) =>
+  erpRequest<ConnectionTestResult>(`/connections/${id}/test`, { method: 'POST' });
+
+export const syncErpConnection = (id: string) =>
+  erpRequest<ErpSyncResult>(`/connections/${id}/sync`, { method: 'POST' });
+
+export const getErpMappings = (id: string) =>
+  erpRequest<ErpMapping[]>(`/connections/${id}/mappings`);
+
+export const deleteErpMapping = (mappingId: string) =>
+  erpRequest<void>(`/mappings/${mappingId}`, { method: 'DELETE' });
+
+export const getErpTransactions = (page = 0, size = 25) =>
+  erpRequest<{ content: ErpTransaction[]; totalElements: number; totalPages: number; number: number }>(
+    `/transactions?page=${page}&size=${size}`
+  );
+
+export const retryErpTransaction = (transactionId: string) =>
+  erpRequest<ErpTransaction>(`/transactions/${transactionId}/retry`, { method: 'POST' });
+
+export const getErpStats = () =>
+  erpRequest<{
+    connections: number;
+    transactions: number;
+    failed: number;
+    successfulToday: number;
+    failedToday: number;
+  }>('/stats');
+
+/** Records pulled and documents attached, for one connection's row. */
+export const getErpConnectionCounts = (connectionId: string) =>
+  erpRequest<{ transactions: number; linkedDocuments: number }>(
+    `/connections/${connectionId}/counts`
+  );
+
+/** What this document is attached to - drives the panel on the document page. */
+export const getDocumentErpLinks = (documentId: string) =>
+  erpRequest<ErpDocumentLink[]>(`/documents/${documentId}/links`);
+
+// ---------------------------------------------------------------------------
+// Document edit lock
+//
+// One user holds a document while changing its file, metadata or tags.
+// Everyone else keeps read access and sees who is editing.
+// ---------------------------------------------------------------------------
+
+export interface DocumentLockStatus {
+  documentId: string;
+  locked: boolean;
+  lockedByUserId: string | null;
+  lockedByUsername: string | null;
+  lockedAt: string | null;
+  expiresAt: string | null;
+  heldByCurrentUser: boolean;
+}
+
+/** Thrown when the server rejects a change because someone else holds the lock. */
+export class DocumentLockedError extends Error {
+  lockedByUsername: string | null;
+  constructor(message: string, lockedByUsername: string | null) {
+    super(message);
+    this.name = 'DocumentLockedError';
+    this.lockedByUsername = lockedByUsername;
+  }
+}
+
+export async function lockDocument(documentId: string): Promise<DocumentLockStatus> {
+  const response = await fetchWithAuth(`${API_BASE_URL}/documents/${documentId}/lock`, {
+    method: 'POST',
+  });
+  if (response.status === 409) {
+    const body = await response.json().catch(() => ({}));
+    throw new DocumentLockedError(
+      body?.message ?? 'This document is being edited by someone else',
+      body?.lockedByUsername ?? null
+    );
+  }
+  if (!response.ok) throw new Error('Could not start editing this document');
+  return response.json();
+}
+
+export async function unlockDocument(documentId: string): Promise<DocumentLockStatus> {
+  const response = await fetchWithAuth(`${API_BASE_URL}/documents/${documentId}/unlock`, {
+    method: 'POST',
+  });
+  if (!response.ok) throw new Error('Could not release the document');
+  return response.json();
+}
+
+export async function getDocumentLockStatus(documentId: string): Promise<DocumentLockStatus> {
+  const response = await fetchWithAuth(`${API_BASE_URL}/documents/${documentId}/lock-status`);
+  if (!response.ok) throw new Error('Could not check the lock status');
+  return response.json();
+}
+
+export interface TaskSigningContext {
+  taskId: number;
+  instanceId: number;
+  documentId: string;
+  workflowName: string;
+  requiresSignature: boolean;
+}
+
+/**
+ * Asked the moment "Approve" is clicked: does this workflow require the approver
+ * to place a signature, and on which document? Drives whether we open the
+ * signing page or the plain approve dialog.
+ */
+export async function getTaskSigningContext(taskId: string | number): Promise<TaskSigningContext> {
+  const response = await fetchWithAuth(`${API_BASE_URL}/tasks/${taskId}/signing-context`);
+  if (!response.ok) {
+    throw new Error('Failed to check whether this approval needs a signature');
+  }
+  return response.json();
+}
+
+export interface TaskContext extends TaskSigningContext {
+  taskStatus: string;
+  workflowStatus: string;
+  dueDate: string | null;
+  assignedToMe: boolean;
+  overdue: boolean;
+  /** Banner text, or null when the step can be acted on. */
+  statusMessage: string | null;
+}
+
+/**
+ * Everything the document page needs about one approval step, in one request.
+ *
+ * Replaces the page's own reconstruction of the same facts, which cost a user
+ * lookup plus one request for every workflow attached to the document.
+ */
+export async function getTaskContext(taskId: string | number): Promise<TaskContext> {
+  const response = await fetchWithAuth(`${API_BASE_URL}/tasks/${taskId}/context`);
+  if (!response.ok) {
+    throw new Error('Failed to load the approval context for this task');
+  }
+  return response.json();
+}
+
 export interface DocumentMetadata {
   metadataId: string;
   documentId: string;
@@ -1386,4 +1649,187 @@ export async function deleteMetadata(documentId: string, key: string): Promise<v
   if (!response.ok) {
     throw new Error(`Failed to delete metadata: ${response.statusText}`);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Paged responses
+//
+// Every list endpoint that can grow without bound returns a page rather than a
+// table. This is the shape Spring Data produces, so the same helper reads all
+// of them.
+// ---------------------------------------------------------------------------
+
+export interface Page<T> {
+  content: T[];
+  totalElements: number;
+  totalPages: number;
+  number: number;   // zero-based page index
+  size: number;
+  first: boolean;
+  last: boolean;
+}
+
+/** An empty page, for error paths that still have to render a table. */
+export function emptyPage<T>(size = 10): Page<T> {
+  return {
+    content: [], totalElements: 0, totalPages: 0,
+    number: 0, size, first: true, last: true,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard
+// ---------------------------------------------------------------------------
+
+export interface SlaAlert {
+  taskId: number;
+  documentId: string;
+  documentTitle: string;
+  workflowName: string;
+  priority: string | null;
+  assignedBy: string;
+  dueDate: string;
+  daysRemaining: number;
+  overdue: boolean;
+}
+
+export interface DashboardSummary {
+  totalUsers: number;
+  totalDocuments: number;
+  myDocuments: number;
+  archivedDocuments: number;
+  activeWorkflows: number;
+  completedWorkflows: number;
+  submittedWorkflows: number;
+  pendingApprovals: number;
+  unreadNotifications: number;
+  erpConnections: number;
+  auditEvents: number;
+  failedAuditEvents: number;
+  slaAlerts: SlaAlert[];
+}
+
+/**
+ * The whole dashboard in one request.
+ *
+ * This replaces four list calls plus one request per active workflow. The
+ * counts are computed by the database and the SLA list arrives ready to render.
+ */
+export async function getDashboardSummary(): Promise<DashboardSummary> {
+  const response = await fetchWithAuth(`${API_BASE_URL}/dashboard/summary`);
+  if (!response.ok) {
+    throw new Error(`Failed to load dashboard: ${response.status}`);
+  }
+  return response.json();
+}
+
+export interface ServiceCheck {
+  name: string;
+  healthy: boolean;
+  detail: string;
+  latencyMs: number;
+}
+
+export interface SystemHealth {
+  healthy: boolean;
+  uptime: string;
+  activeUsers: number;
+  lastBackup: string;
+  apiResponseTimeMs: number;
+  documentQueueDepth: number;
+  erpSyncStatus: string;
+  storageUsedBytes: number;
+  dbConnectionsActive: number;
+  dbConnectionsMax: number;
+  ocrAvailable: boolean;
+  services: ServiceCheck[];
+  checkedAt: string;
+}
+
+/**
+ * Live system health, checked fresh on every call - a real database round
+ * trip, a real S3 reachability probe, real counts. There is no caching layer
+ * here to invalidate, because the whole point of the page is that a click on
+ * Refresh reflects the system's actual current state.
+ */
+export async function getSystemHealth(): Promise<SystemHealth> {
+  const response = await fetchWithAuth(`${API_BASE_URL}/system-health`);
+  if (!response.ok) {
+    throw new Error(`Failed to load system health: ${response.status}`);
+  }
+  return response.json();
+}
+
+// ---------------------------------------------------------------------------
+// Paged lists
+// ---------------------------------------------------------------------------
+
+export interface DocumentPageParams {
+  page?: number;
+  size?: number;
+  search?: string;
+  folderId?: string | null;
+  all?: boolean;
+}
+
+/** One page of documents, searched and filtered in the database. */
+export async function getDocumentsPage(params: DocumentPageParams = {}): Promise<Page<Document>> {
+  const query = new URLSearchParams();
+  query.set('page', String(params.page ?? 0));
+  query.set('size', String(params.size ?? 10));
+  if (params.all) query.set('all', 'true');
+  if (params.search) query.set('search', params.search);
+  if (params.folderId) query.set('folderId', params.folderId);
+
+  const response = await fetchWithAuth(`${API_BASE_URL}/documents/page?${query.toString()}`);
+  if (!response.ok) {
+    throw new Error(`Failed to load documents: ${response.status}`);
+  }
+  return response.json();
+}
+
+export interface UserPageParams {
+  page?: number;
+  size?: number;
+  search?: string;
+  status?: string;
+  role?: string;
+}
+
+/** One page of the user directory. */
+export async function getUsersPage(params: UserPageParams = {}): Promise<Page<User>> {
+  const query = new URLSearchParams();
+  query.set('page', String(params.page ?? 0));
+  query.set('size', String(params.size ?? 10));
+  if (params.search) query.set('search', params.search);
+  if (params.status && params.status !== 'all') query.set('status', params.status);
+  if (params.role && params.role !== 'all') query.set('role', params.role);
+
+  const response = await fetchWithAuth(`${ADMIN_API_BASE_URL}/users/page?${query.toString()}`);
+  if (!response.ok) {
+    throw new Error(`Failed to load users: ${response.status}`);
+  }
+  return response.json();
+}
+
+export interface UserStats {
+  total: number;
+  active: number;
+  inactive: number;
+  roles: number;
+}
+
+/**
+ * Directory-wide user counts.
+ *
+ * Kept separate from the page because they describe every user, not the ten on
+ * screen - once paging is real, counting the rows in the table gives the wrong
+ * answer.
+ */
+export async function getUserStats(): Promise<UserStats> {
+  const response = await fetchWithAuth(`${ADMIN_API_BASE_URL}/users/stats`);
+  if (!response.ok) {
+    throw new Error(`Failed to load user statistics: ${response.status}`);
+  }
+  return response.json();
 }

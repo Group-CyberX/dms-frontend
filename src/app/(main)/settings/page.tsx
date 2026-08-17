@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { CheckCircle, AlertCircle } from 'lucide-react'
 import { useAuthStore } from '@/store/auth-store'
@@ -50,6 +50,34 @@ export default function SettingsPage() {
   const [successMessage, setSuccessMessage] = useState('')
   const [isLoading, setIsLoading] = useState(false)
 
+  // Load what was actually saved. Without this the screen always opened on the
+  // hardcoded defaults above, so a saved choice looked as though it had been
+  // forgotten even when it had been stored.
+  useEffect(() => {
+    let cancelled = false
+
+    const load = async () => {
+      try {
+        const [preferences, organisation] = await Promise.all([
+          apiClient.get('/api/settings/me').catch(() => null),
+          apiClient.get('/api/settings/organisation').catch(() => null)
+        ])
+        if (cancelled) return
+
+        setFormData((prev) => ({
+          ...prev,
+          ...(preferences && typeof preferences === 'object' ? preferences : {}),
+          ...(organisation && typeof organisation === 'object' ? organisation : {})
+        }))
+      } catch (error) {
+        console.error('Could not load settings:', error)
+      }
+    }
+
+    load()
+    return () => { cancelled = true }
+  }, [])
+
   const updateForm = (updates: Partial<SettingsFormData>) => {
     setFormData((prev) => ({ ...prev, ...updates }))
   }
@@ -85,37 +113,74 @@ export default function SettingsPage() {
     return Object.keys(newErrors).length === 0
   }
 
+  // Personal preferences belong to the signed-in user; the administrator block
+  // is organisation-wide. They are stored separately, so they are saved
+  // separately and only the halves the user may change are sent.
+  const canEditOrgSettings =
+    role === 'SYSTEM_ADMIN' || hasPermission(permissions, role, 'canEditSetting')
+
   const handleSave = async () => {
     if (!validateForm()) return
 
     setIsLoading(true)
     setSuccessMessage('')
+    const saved: string[] = []
+
     try {
       if (formData.currentPassword && formData.newPassword) {
-        await apiClient.post("/api/profile/change-password", {
+        await apiClient.post('/api/profile/change-password', {
           currentPassword: formData.currentPassword,
           newPassword: formData.newPassword
         })
-        
-        // Clear password fields after success
+
         setFormData((prev) => ({
           ...prev,
           currentPassword: '',
           newPassword: '',
           confirmPassword: ''
         }))
-        
-        setSuccessMessage('Password changed successfully! Other settings saved.')
-      } else {
-        // Simulate API call for other settings
-        await new Promise((resolve) => setTimeout(resolve, 1000))
-        setSuccessMessage('Settings saved successfully!')
+        saved.push('password')
       }
 
+      const preferences = await apiClient.put('/api/settings/me', {
+        emailNotifications: formData.emailNotifications,
+        pushNotifications: formData.pushNotifications,
+        documentApproval: formData.documentApproval,
+        workflowUpdates: formData.workflowUpdates,
+        systemAlerts: formData.systemAlerts,
+        language: formData.language,
+        timezone: formData.timezone,
+        dateFormat: formData.dateFormat,
+        theme: formData.theme
+      })
+      saved.push('preferences')
+
+      if (canEditOrgSettings) {
+        await apiClient.put('/api/settings/organisation', {
+          defaultRetentionDays: formData.defaultRetentionDays,
+          recycleBinRetentionDays: formData.recycleBinRetentionDays,
+          automaticVersionControl: formData.automaticVersionControl,
+          maxVersionsPerDocument: formData.maxVersionsPerDocument,
+          mandatoryClassification: formData.mandatoryClassification,
+          sessionTimeout: formData.sessionTimeout,
+          passwordPolicy: formData.passwordPolicy,
+          passwordExpiry: formData.passwordExpiry,
+          allowedFileTypes: formData.allowedFileTypes
+        })
+        saved.push('system configuration')
+      }
+
+      // Reflect exactly what the server kept, so the screen cannot show a
+      // value that was rejected or trimmed on the way in.
+      if (preferences && typeof preferences === 'object') {
+        setFormData((prev) => ({ ...prev, ...(preferences as Partial<SettingsFormData>) }))
+      }
+
+      setSuccessMessage(`Saved ${saved.join(', ')}.`)
       setTimeout(() => setSuccessMessage(''), 4000)
     } catch (error: any) {
       console.error('Error saving settings:', error)
-      
+
       const errorMessage = error.message || 'Failed to save settings. Please try again.'
       setErrors({ submit: errorMessage })
     } finally {
