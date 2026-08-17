@@ -177,6 +177,25 @@ const ApproveModal: React.FC<ApproveModalProps> = ({
   );
 };
 
+/**
+ * Whether these bytes are really a PDF, read from the file itself.
+ *
+ * Every PDF begins with %PDF-, whatever it is called. This used to be guessed
+ * from the blob's MIME type or the document title instead, and both are
+ * unreliable: the download endpoint labels everything
+ * application/octet-stream, so the type never matched, which left the title as
+ * the only real test - and a title is just a label a user typed. A genuine PDF
+ * stored under a name like "testingsig" was refused, while a renamed .docx
+ * would have sailed through to fail inside the PDF parser instead.
+ */
+async function looksLikePdf(blob: Blob): Promise<boolean> {
+  const header = new Uint8Array(await blob.slice(0, 5).arrayBuffer());
+  if (header.length < 5) return false;
+  // "%PDF-"
+  return header[0] === 0x25 && header[1] === 0x50 && header[2] === 0x44
+      && header[3] === 0x46 && header[4] === 0x2d;
+}
+
 // =========================================================================
 // 3. MAIN SIGNATURE WORKSPACE
 // =========================================================================
@@ -239,9 +258,7 @@ export const SignatureWorkspace: React.FC<SignatureWorkspaceProps> = ({ document
         if (cancelled) return;
 
         // Stamping is PDF-only; fail clearly rather than rendering a blank page.
-        const looksLikePdf = blob.type === 'application/pdf'
-          || (documentData.title ?? '').toLowerCase().endsWith('.pdf');
-        if (!looksLikePdf) {
+        if (!(await looksLikePdf(blob))) {
           setLoadError('Only PDF documents can be signed. This file is not a PDF.');
           return;
         }

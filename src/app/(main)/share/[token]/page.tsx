@@ -26,13 +26,30 @@ type ShareComment = {
   id: string;
   content: string;
   createdAt?: string;
+  updatedAt?: string | null;
   userId?: string | null;
+  /** Display name of whoever wrote it. */
+  authorName?: string | null;
+  /**
+   * Set by the backend: true when this caller may edit or delete it. The page
+   * cannot work this out on its own - nothing in the login response or the JWT
+   * carries the visitor's own user id to compare against.
+   */
+  mine?: boolean;
   pageNumber?: number | null;
   anchorX?: number | null;
   anchorY?: number | null;
   /** COMMENT = pinned note, TEXT = typewriter text drawn onto the page. */
   annotationType?: 'COMMENT' | 'TEXT' | null;
 };
+
+/** Whose comment it is, and so whether Edit and Delete are offered. */
+const isOwnComment = (c: ShareComment, currentUserId: string | null) =>
+  c.mine ?? (currentUserId != null && c.userId === currentUserId);
+
+/** Best available label for a comment's author. */
+const authorLabel = (c: ShareComment, currentUserId: string | null) =>
+  isOwnComment(c, currentUserId) ? "You" : c.authorName || "Reviewer";
 
 /** Which annotation the next click on the page creates. */
 type Tool = 'comment' | 'text';
@@ -287,21 +304,60 @@ export default function SharePage() {
     await loadComments();
   };
 
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditText("");
+  };
+
+  /** Reads the message the backend sent, whatever shape the error came in. */
+  const errorMessage = async (res: Response, fallback: string) => {
+    const body = await res.json().catch(() => null);
+    return body?.message || fallback;
+  };
+
   const editComment = async (id: string, content: string) => {
+    if (!content.trim()) return;
+
+    if (canEdit && !lock.holdsLock) {
+      const acquired = await lock.acquire();
+      if (!acquired) return;
+    }
+
     const res = await fetchWithAuth(`${API}/api/comments/${id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content }),
+      body: JSON.stringify({ content: content.trim() }),
     });
-    if (!res.ok) { alert("Failed to edit comment"); return; }
+
+    if (!res.ok) {
+      alert(await errorMessage(res, "Failed to edit comment"));
+      return;
+    }
+
     setEditingId(null);
+    setEditText("");
     await loadComments();
   };
 
   const deleteComment = async (id: string) => {
-    if (!confirm("Delete this comment?")) return;
+    if (!confirm("Delete this? It will be removed from the review and from any version you save next.")) return;
+
+    if (canEdit && !lock.holdsLock) {
+      const acquired = await lock.acquire();
+      if (!acquired) return;
+    }
+
     const res = await fetchWithAuth(`${API}/api/comments/${id}`, { method: "DELETE" });
-    if (!res.ok) { alert("Failed to delete comment"); return; }
+
+    if (!res.ok) {
+      alert(await errorMessage(res, "Failed to delete comment"));
+      return;
+    }
+
+    // A deleted annotation must not stay selected, or the drawer keeps
+    // highlighting a pin that is no longer on the page.
+    if (selectedPinId === id) setSelectedPinId(null);
+    if (editingId === id) setEditingId(null);
     await loadComments();
   };
 
@@ -358,7 +414,7 @@ export default function SharePage() {
       anchorX: c.anchorX as number,
       anchorY: c.anchorY as number,
       number,
-      author: c.userId === currentUserId ? "You" : "Reviewer",
+      author: authorLabel(c, currentUserId),
       content: c.content,
       type: (c.annotationType === 'TEXT' ? 'TEXT' : 'COMMENT') as 'COMMENT' | 'TEXT',
     }));
@@ -584,7 +640,7 @@ export default function SharePage() {
                   numbered.map(({ c, number }) => {
                     const isEditing = editingId === c.id;
                     const isAnchored = c.pageNumber != null && c.anchorX != null;
-                    const isMine = c.userId === currentUserId;
+                    const isMine = isOwnComment(c, currentUserId);
                     const isText = c.annotationType === 'TEXT';
 
                     return (
@@ -604,7 +660,7 @@ export default function SharePage() {
                             {isText ? <Type className="h-2.5 w-2.5" /> : number}
                           </span>
                           <span className="text-xs font-semibold text-gray-700">
-                            {isMine ? "You" : "Reviewer"}
+                            {authorLabel(c, currentUserId)}
                           </span>
                           {isText && (
                             <span className="rounded bg-[#103A7A]/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#103A7A]">
@@ -618,30 +674,42 @@ export default function SharePage() {
                           )}
                           {c.createdAt && (
                             <span className="ml-auto text-[10px] text-gray-400">
+                              {c.updatedAt && "edited · "}
                               {new Date(c.createdAt).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}
                             </span>
                           )}
                         </div>
 
                         {isEditing ? (
-                          <div className="space-y-2">
+                          <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
                             <textarea
+                              autoFocus
                               value={editText}
                               onChange={(e) => setEditText(e.target.value)}
-                              onClick={(e) => e.stopPropagation()}
-                              className="w-full resize-none rounded-md border border-gray-300 bg-white p-2 text-sm"
+                              onKeyDown={(e) => {
+                                // Escape abandons the edit, the same way it does
+                                // for the typewriter box on the page.
+                                if (e.key === 'Escape') { e.preventDefault(); cancelEdit(); }
+                              }}
+                              className="w-full resize-none rounded-md border border-gray-300 bg-white p-2 text-sm focus:border-transparent focus:ring-2 focus:ring-[#953002]"
                               rows={3}
                             />
+                            {isText && (
+                              <p className="text-[11px] leading-snug text-gray-400">
+                                This text is drawn onto the page - the change appears in the next version you save.
+                              </p>
+                            )}
                             <div className="flex gap-2">
                               <button
-                                onClick={(e) => { e.stopPropagation(); editComment(c.id, editText); }}
-                                className="rounded bg-[#953002] px-3 py-1 text-xs font-medium text-white hover:bg-[#7a2600]"
+                                onClick={() => editComment(c.id, editText)}
+                                disabled={!editText.trim() || editText.trim() === c.content}
+                                className="rounded bg-[#00A130] px-4 py-1.5 text-sm font-medium text-white hover:bg-[#008c2a] disabled:opacity-40"
                               >
                                 Save
                               </button>
                               <button
-                                onClick={(e) => { e.stopPropagation(); setEditingId(null); }}
-                                className="rounded border border-gray-300 px-3 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100"
+                                onClick={cancelEdit}
+                                className="rounded bg-[#E2E4E9] px-4 py-1.5 text-sm font-medium text-[#4A5568] hover:bg-[#D1D5DB]"
                               >
                                 Cancel
                               </button>
@@ -651,18 +719,18 @@ export default function SharePage() {
                           <>
                             <p className="whitespace-pre-wrap text-gray-700">{c.content}</p>
                             {isMine && (
-                              <div className="mt-2 flex gap-3">
+                              <div className="mt-3 flex items-center justify-end gap-3 border-t border-gray-100 pt-2">
                                 <button
                                   onClick={(e) => { e.stopPropagation(); setEditingId(c.id); setEditText(c.content); }}
-                                  className="text-xs font-medium text-gray-500 hover:text-gray-800"
+                                  className="text-sm font-medium text-[#8B4513] hover:text-[#A0522D]"
                                 >
                                   Edit
                                 </button>
                                 <button
                                   onClick={(e) => { e.stopPropagation(); deleteComment(c.id); }}
-                                  className="flex items-center gap-1 text-xs font-medium text-red-500 hover:text-red-700"
+                                  className="text-sm font-medium text-red-600 hover:text-red-700"
                                 >
-                                  <Trash2 className="h-3 w-3" /> Delete
+                                  Delete
                                 </button>
                               </div>
                             )}

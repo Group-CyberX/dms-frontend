@@ -371,7 +371,7 @@ export default function WorkflowBuilderPage() {
                 {/* Select Document */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Select Document
+                    Select Document <span className="text-red-500">*</span>
                   </label>
                   <select
                     value={selectedDocument}
@@ -380,6 +380,7 @@ export default function WorkflowBuilderPage() {
                       setSelectedDocument(value);
                       setDocumentType(getDocumentTypeForDocument(value));
                     }}
+                    required
                     className="w-full h-9 px-3 py-2 border border-input rounded-md bg-transparent text-sm shadow-xs focus:outline-none focus:ring-[3px] focus:ring-ring/50 focus:border-ring"
                   >
                     <option value=""disabled hidden>Choose a document</option>
@@ -413,20 +414,21 @@ export default function WorkflowBuilderPage() {
                 {/* Workflow Name */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Workflow Name
+                    Workflow Name <span className="text-red-500">*</span>
                   </label>
                   <Input
                     type="text"
                     value={workflowName}
                     onChange={(e) => setWorkflowName(e.target.value)}
                     placeholder="Enter workflow name"
+                    required
                   />
                 </div>
 
                 {/* Description */}
                 <div>
                   <label className="mb-2 block text-sm font-medium text-[#3b3b3b]">
-                    Description
+                    Description <span className="text-red-500">*</span>
                   </label>
                   <textarea
                     placeholder="Describe the workflow purpose and when it applies"
@@ -434,19 +436,21 @@ export default function WorkflowBuilderPage() {
                     onChange={(e) => setDescription(e.target.value)}
                     rows={3}
                     disabled={isTemplateLocked}
+                    required
                     className="w-full px-3 py-2 border border-input rounded-md bg-transparent text-sm shadow-xs focus:outline-none focus:ring-[3px] focus:ring-ring/50 focus:border-ring"
                     />
                 </div>
 
                 <div>
                   <label className="mb-2 block text-sm font-medium text-[#3b3b3b]">
-                    Document Type 
+                    Document Type <span className="text-red-500">*</span>
                   </label>
                   <div className="relative">
                     <select
                       value={documentType}
                       onChange={(e) => setDocumentType(e.target.value)}
                       disabled={isTemplateLocked}
+                      required
                       className="w-full h-9 px-3 py-2 border border-input rounded-md bg-transparent text-sm shadow-xs focus:outline-none focus:ring-[3px] focus:ring-ring/50 focus:border-ring appearance-none"
                     >
                       <option value="" disabled hidden>Select type</option>
@@ -462,12 +466,13 @@ export default function WorkflowBuilderPage() {
 
                 {/* Workflow Type */}
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-[#3b3b3b]">Workflow Type</label>
+                  <label className="mb-2 block text-sm font-medium text-[#3b3b3b]">Workflow Type <span className="text-red-500">*</span></label>
                   <div className="relative w-48">
                     <select
                       value={workflowType}
                       onChange={(e) => setWorkflowType(e.target.value as 'SEQUENTIAL' | 'PARALLEL' | '')}
                       disabled={isTemplateLocked}
+                      required
                       className="w-full h-9 px-3 py-2 border border-input rounded-md bg-transparent text-sm shadow-xs focus:outline-none focus:ring-[3px] focus:ring-ring/50 focus:border-ring appearance-none"
                     >
                       <option value="" disabled hidden>
@@ -485,7 +490,7 @@ export default function WorkflowBuilderPage() {
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <label className="block text-sm font-medium text-gray-700">
-                      Approval Chain
+                      Approval Chain <span className="text-red-500">*</span>
                     </label>
                     <Button
                       type="button"
@@ -558,7 +563,7 @@ export default function WorkflowBuilderPage() {
                 {/* Due Date */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Due Date
+                    Due Date <span className="text-red-500">*</span>
                   </label>
                   <div className="relative">
                     <Input
@@ -566,6 +571,7 @@ export default function WorkflowBuilderPage() {
                       value={dueDate}
                       onChange={(e) => setDueDate(e.target.value)}
                       min={new Date().toISOString().split("T")[0]}
+                      required
                       className="pr-10"
                     />
                   </div>
@@ -574,11 +580,12 @@ export default function WorkflowBuilderPage() {
                 {/* Priority */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Priority
+                    Priority <span className="text-red-500">*</span>
                   </label>
                   <select
                     value={priority}
                     onChange={(e) => setPriority(e.target.value)}
+                    required
                     className="w-full h-9 px-3 py-2 border border-input rounded-md bg-transparent text-sm shadow-xs focus:outline-none focus:ring-[3px] focus:ring-ring/50 focus:border-ring"
                   >
                     <option value=""disabled hidden>Select priority</option>

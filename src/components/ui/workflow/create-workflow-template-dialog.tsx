@@ -128,7 +128,7 @@ export default function CreateWorkflowTemplateDialog({
       const templateData = await safeJson(templateResponse);
       const stepsData = await safeJson(stepsResponse);
       const parsedSteps = Array.isArray(stepsData) ? stepsData : [];
-      
+
       // Map steps by step order
       const templateStepMap = new Map<number, WorkflowTemplateStep>();
 
@@ -236,7 +236,7 @@ export default function CreateWorkflowTemplateDialog({
     }
 
     setStepApprovers(updated);
-   
+
   }, [numberOfSteps]);
 
   const handleClose = () => {
@@ -351,7 +351,7 @@ export default function CreateWorkflowTemplateDialog({
             <X className="h-5 w-5" />
           </button>
         </div>
-        
+
         <div className="px-6 pb-6 pt-6">
           {initialLoading ? (
             <div className="py-10 text-center text-sm text-gray-500">Loading template...</div>
@@ -361,7 +361,7 @@ export default function CreateWorkflowTemplateDialog({
               {/* Template Name */}
               <div>
                 <label className="mb-2 block text-sm font-medium text-[#3b3b3b]">
-                  Workflow Template Name <span className="text-[#3b3b3b]">*</span>
+                  Workflow Template Name <span className="text-[red]">*</span>
                 </label>
                 <input
                   type="text"
@@ -375,7 +375,7 @@ export default function CreateWorkflowTemplateDialog({
               {/* Description */}
               <div>
                 <label className="mb-2 block text-sm font-medium text-[#3b3b3b]">
-                  Description <span className="text-[#3b3b3b]">*</span>
+                  Description <span className="text-[red]">*</span>
                 </label>
                 <textarea
                   placeholder="Describe the workflow purpose and when it applies"
@@ -390,7 +390,7 @@ export default function CreateWorkflowTemplateDialog({
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="mb-2 block text-sm font-medium text-[#3b3b3b]">
-                    Number of Steps <span className="text-[#3b3b3b]">*</span>
+                    Number of Steps <span className="text-[red]">*</span>
                   </label>
                   <input
                     type="number"
@@ -406,7 +406,7 @@ export default function CreateWorkflowTemplateDialog({
                 {/* Document Type Selection */}
                 <div>
                   <label className="mb-2 block text-sm font-medium text-[#3b3b3b]">
-                    Document Type <span className="text-[#3b3b3b]">*</span>
+                    Document Type <span className="text-[red]">*</span>
                   </label>
                   <div className="relative">
                     <select
@@ -430,7 +430,7 @@ export default function CreateWorkflowTemplateDialog({
 
               {/* Workflow Type Selection */}
               <div>
-                <label className="mb-2 block text-sm font-medium text-[#3b3b3b]">Workflow Type <span className="text-[#3b3b3b]">*</span></label>
+                <label className="mb-2 block text-sm font-medium text-[#3b3b3b]">Workflow Type <span className="text-[red]">*</span></label>
                 <div className="relative w-48">
                   <select
                     value={workflowType}
@@ -497,11 +497,11 @@ export default function CreateWorkflowTemplateDialog({
                               prev.map((currentStep) =>
                                 currentStep.stepOrder === step.stepOrder
                                   ? {
-                                      ...currentStep,
-                                      approverUserId: e.target.value,
-                                      approverName: selectedUser?.username ?? "",
-                                      approverRole: selectedUser ? getRoleName(selectedUser) : "",
-                                    }
+                                    ...currentStep,
+                                    approverUserId: e.target.value,
+                                    approverName: selectedUser?.username ?? "",
+                                    approverRole: selectedUser ? getRoleName(selectedUser) : "",
+                                  }
                                   : currentStep
                               )
                             );
@@ -533,7 +533,7 @@ export default function CreateWorkflowTemplateDialog({
                   ))}
                 </div>
               </div>
-                
+
               <div className="flex justify-end gap-3 pt-2">
                 <button
                   type="button"
