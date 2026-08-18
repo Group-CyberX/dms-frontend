@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { useRouter } from "next/navigation";
 import { Check, Circle, X } from "lucide-react"
+import { notify } from '@/lib/feedback';
 
 // ── Password-requirement helpers ───────────────────────────────────
 const requirements = [
@@ -85,7 +86,7 @@ export function RegisterForm() {
 
   } catch (error) {
     console.error(error);
-    alert("Registration failed");
+    notify.error("Registration failed");
   }
 };
 

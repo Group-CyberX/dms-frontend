@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, useLayoutEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { ConfirmProvider } from "@/hooks/use-confirm";
 import NavigationSideBar from "@/components/NavigationItem/NavigationSideBar";
 import { formatRoleLabel, canAccessPath } from "@/lib/access-control";
 import { useAuthStore, setupCrossWindowLogoutDetection } from "@/store/auth-store";
@@ -242,6 +243,7 @@ export default function MainLayout({
 
 
   return (
+    <ConfirmProvider>
     <SidebarProvider>
       <div className="flex h-screen w-full bg-[#ececec]">
         <NavigationSideBar />
@@ -501,5 +503,6 @@ export default function MainLayout({
         </div>
       </div>
     </SidebarProvider>
+    </ConfirmProvider>
   );
 }

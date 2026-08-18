@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { ChevronDown, X } from "lucide-react";
 import { fetchWithAuth } from '@/lib/api-client';
+import { notify } from '@/lib/feedback';
 
 type StepApprover = {
   stepOrder: number;
@@ -165,7 +166,7 @@ export default function CreateWorkflowTemplateDialog({
       );
     } catch (error) {
       console.error(error);
-      alert("Failed to load template details");
+      notify.error("Failed to load template details");
       onOpenChange(false);
     } finally {
       setInitialLoading(false);
@@ -243,41 +244,40 @@ export default function CreateWorkflowTemplateDialog({
     onOpenChange(false);
   };
 
+  // Messages sit under the field they belong to, so the reader does not have
+  // to work out which input a banner was complaining about.
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+  const clearFieldError = (field: string) =>
+    setFieldErrors((current) => {
+      if (!current[field]) return current;
+      const next = { ...current };
+      delete next[field];
+      return next;
+    });
+
   // Validate form and send request to backend
   const handleSubmit = async () => {
-    if (!name.trim()) {
-      alert("Workflow template name is required");
-      return;
-    }
+    // Everything wrong is reported at once, so the reader is not sent back and
+    // forth fixing one field at a time.
+    const errors: Record<string, string> = {};
 
-    if (!description.trim()) {
-      alert("Description is required");
-      return;
-    }
+    if (!name.trim()) errors.name = "Give the template a name.";
+    if (!description.trim()) errors.description = "Describe when this workflow applies.";
+    if (!documentType) errors.documentType = "Choose the document type this applies to.";
 
-    if (!documentType) {
-      alert("Please select document type");
-      return;
-    }
-
-    // Ensure each step has an approver
-    const hasEmptyApprover = stepApprovers.some((step) => !String(step.approverUserId ?? "").trim());
-
-    if (hasEmptyApprover) {
-      alert("Please select approver for each step");
-      return;
-    }
-
-    // Prevent duplicate approvers
     const selectedIds = stepApprovers
       .map((s) => String(s.approverUserId ?? "").trim())
       .filter((v) => v !== "");
 
-    const uniqueCount = new Set(selectedIds).size;
-    if (uniqueCount !== selectedIds.length) {
-      alert("Duplicate approvers are not allowed.");
-      return;
+    if (stepApprovers.some((step) => !String(step.approverUserId ?? "").trim())) {
+      errors.approvers = "Every step needs an approver.";
+    } else if (new Set(selectedIds).size !== selectedIds.length) {
+      errors.approvers = "Each step needs a different approver.";
     }
+
+    setFieldErrors(errors);
+    if (Object.keys(errors).length > 0) return;
 
     const payload = {
       name: name.trim(),
@@ -309,13 +309,13 @@ export default function CreateWorkflowTemplateDialog({
         throw new Error(templateId ? 'Failed to update template' : 'Failed to create template');
       }
 
-      alert(templateId ? 'Workflow template updated successfully' : 'Workflow template created successfully');
+      notify.success(templateId ? 'Workflow template updated successfully' : 'Workflow template created successfully');
       resetForm();
       onOpenChange(false);
       onSaved?.();
     } catch (error) {
       console.error(error);
-      alert(templateId ? 'Failed to update workflow template' : 'Failed to create workflow template');
+      notify.error(templateId ? 'Failed to update workflow template' : 'Failed to create workflow template');
     } finally {
       setLoading(false);
     }
@@ -367,9 +367,13 @@ export default function CreateWorkflowTemplateDialog({
                   type="text"
                   placeholder="e.g., Invoice Approval Workflow"
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full h-9 px-3 py-2 border border-input rounded-md bg-transparent text-sm shadow-xs focus:outline-none focus:ring-[3px] focus:ring-ring/50 focus:border-ring"
+                  onChange={(e) => { setName(e.target.value); clearFieldError("name"); }}
+                  aria-invalid={Boolean(fieldErrors.name)}
+                  className={`w-full h-9 px-3 py-2 border rounded-md bg-transparent text-sm shadow-xs focus:outline-none focus:ring-[3px] focus:ring-ring/50 ${fieldErrors.name ? "border-red-500 focus:border-red-500" : "border-input focus:border-ring"}`}
                 />
+                {fieldErrors.name && (
+                  <p className="mt-1.5 text-xs text-red-600">{fieldErrors.name}</p>
+                )}
               </div>
 
               {/* Description */}
@@ -380,10 +384,14 @@ export default function CreateWorkflowTemplateDialog({
                 <textarea
                   placeholder="Describe the workflow purpose and when it applies"
                   value={description}
-                  onChange={(e) => setDescription(e.target.value)}
+                  onChange={(e) => { setDescription(e.target.value); clearFieldError("description"); }}
                   rows={3}
-                  className="w-full h-20 px-3 py-2 border border-input rounded-md bg-transparent text-sm shadow-xs focus:outline-none focus:ring-[3px] focus:ring-ring/50 focus:border-ring"
+                  aria-invalid={Boolean(fieldErrors.description)}
+                  className={`w-full h-20 px-3 py-2 border rounded-md bg-transparent text-sm shadow-xs focus:outline-none focus:ring-[3px] focus:ring-ring/50 ${fieldErrors.description ? "border-red-500 focus:border-red-500" : "border-input focus:border-ring"}`}
                 />
+                {fieldErrors.description && (
+                  <p className="mt-1.5 text-xs text-red-600">{fieldErrors.description}</p>
+                )}
               </div>
 
               {/* Number of Steps */}
@@ -411,7 +419,8 @@ export default function CreateWorkflowTemplateDialog({
                   <div className="relative">
                     <select
                       value={documentType}
-                      onChange={(e) => setDocumentType(e.target.value)}
+                      onChange={(e) => { setDocumentType(e.target.value); clearFieldError("documentType"); }}
+                      aria-invalid={Boolean(fieldErrors.documentType)}
                       className="w-full h-9 px-3 py-2 border border-input rounded-md bg-transparent text-sm shadow-xs focus:outline-none focus:ring-[3px] focus:ring-ring/50 focus:border-ring appearance-none"
                     >
                       <option value="" disabled hidden>
@@ -425,6 +434,9 @@ export default function CreateWorkflowTemplateDialog({
                     </select>
                     <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
                   </div>
+                  {fieldErrors.documentType && (
+                    <p className="mt-1.5 text-xs text-red-600">{fieldErrors.documentType}</p>
+                  )}
                 </div>
               </div>
 
@@ -478,6 +490,10 @@ export default function CreateWorkflowTemplateDialog({
                   Select approvers for each workflow step
                 </p>
 
+                {fieldErrors.approvers && (
+                  <p className="mt-3 text-xs text-red-600">{fieldErrors.approvers}</p>
+                )}
+
                 <div className="mt-5 space-y-4">
                   {stepApprovers.map((step) => (
                     <div key={step.stepOrder}>
@@ -489,6 +505,7 @@ export default function CreateWorkflowTemplateDialog({
                         <select
                           value={step.approverUserId}
                           onChange={(e) => {
+                            clearFieldError("approvers");
                             const selectedUser = availableApprovers.find(
                               (approver) => String(approver.userId) === e.target.value
                             );
@@ -506,7 +523,7 @@ export default function CreateWorkflowTemplateDialog({
                               )
                             );
                           }}
-                          className="w-full h-9 px-3 py-2 border border-input rounded-md bg-transparent text-sm shadow-xs focus:outline-none focus:ring-[3px] focus:ring-ring/50 focus:border-ring appearance-none"
+                          className={`w-full h-9 px-3 py-2 border rounded-md bg-transparent text-sm shadow-xs focus:outline-none focus:ring-[3px] focus:ring-ring/50 appearance-none ${fieldErrors.approvers ? "border-red-500 focus:border-red-500" : "border-input focus:border-ring"}`}
                         >
                           <option value="" disabled hidden>
                             Select approver

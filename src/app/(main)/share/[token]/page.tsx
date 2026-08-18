@@ -3,12 +3,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Download, Loader2, Lock, MapPin, MessageSquare, Save, Trash2, Type, X } from "lucide-react";
+import { Download, Link2 as LinkIcon, Loader2, Lock, MapPin, MessageSquare, Save, Trash2, Type, X } from "lucide-react";
 import { fetchWithAuth } from "@/lib/api-client";
 import { DocumentPreview } from "@/components/ui/DocumentPreview";
 import { AnnotatablePdf, type AnnotationPin } from "@/components/ui/share/annotatable-pdf";
 import { useDocumentLock } from "@/hooks/use-document-lock";
 import { useAuthStore } from "@/store/auth-store";
+import { notify, apiMessage } from '@/lib/feedback';
+import { useConfirm } from '@/hooks/use-confirm';
 
 type ShareAccessResponse = {
   documentId: string;
@@ -62,6 +64,7 @@ const API = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8081/api").rep
 const COMMENT_POLL_MS = 15000;
 
 export default function SharePage() {
+  const confirm = useConfirm();
   const params = useParams();
   const shareToken = params.token as string;
   const currentUserId = useAuthStore((s) => s.userId);
@@ -74,6 +77,8 @@ export default function SharePage() {
   const [downloading, setDownloading] = useState(false);
   const [checkingAccess, setCheckingAccess] = useState(true);
   const [needsPassword, setNeedsPassword] = useState(false);
+  // Set when the link itself is the problem - revoked, expired or unknown.
+  const [linkBlocked, setLinkBlocked] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
 
@@ -155,15 +160,22 @@ export default function SharePage() {
     });
 
     if (!res.ok) {
-      const text = await res.text();
-      if (text.includes("Password required") || text.includes("Invalid password")) {
+      // The server sends {"message": "..."}; showing the raw body put literal
+      // JSON in front of the reader.
+      const message = await apiMessage(res, "This link could not be opened.");
+
+      if (message.includes("Password required") || message.includes("Invalid password")) {
         setNeedsPassword(true);
       } else {
-        alert(text || "Access failed");
+        // A revoked or expired link leaves nothing to render, so the page says
+        // so itself rather than flashing a toast over a screen that never loads.
+        setLinkBlocked(message);
       }
       setCheckingAccess(false);
       return;
     }
+
+    setLinkBlocked(null);
 
     const d = await res.json();
     setData(d);
@@ -184,6 +196,7 @@ export default function SharePage() {
     setData(null);
     setComments([]);
     setNeedsPassword(false);
+    setLinkBlocked(null);
     setCheckingAccess(true);
     setPendingAnchor(null);
     setPreviewUrl((prev) => { if (prev) window.URL.revokeObjectURL(prev); return null; });
@@ -234,7 +247,7 @@ export default function SharePage() {
 
   const handleDownload = async () => {
     if (!data?.allowDownload) {
-      alert("Download not allowed");
+      notify.error("Download not allowed");
       return;
     }
     try {
@@ -244,7 +257,7 @@ export default function SharePage() {
         { method: "GET" }
       );
       if (!res.ok) {
-        alert((await res.text()) || "Download failed");
+        notify.error((await res.text()) || "Download failed");
         return;
       }
       const blob = await res.blob();
@@ -254,7 +267,7 @@ export default function SharePage() {
       a.download = documentName;
       a.click();
     } catch {
-      alert("Error downloading file");
+      notify.error("Error downloading file");
     } finally {
       setDownloading(false);
     }
@@ -301,7 +314,7 @@ export default function SharePage() {
     });
 
     if (!res.ok) {
-      alert((await res.text()) || "Failed to add text");
+      notify.error((await res.text()) || "Failed to add text");
       return;
     }
     await loadComments();
@@ -328,7 +341,7 @@ export default function SharePage() {
     });
 
     if (!res.ok) {
-      alert((await res.text()) || "Failed to add comment");
+      notify.error((await res.text()) || "Failed to add comment");
       return;
     }
 
@@ -363,7 +376,7 @@ export default function SharePage() {
     });
 
     if (!res.ok) {
-      alert(await errorMessage(res, "Failed to edit comment"));
+      notify.error(await errorMessage(res, "Failed to edit comment"));
       return;
     }
 
@@ -373,7 +386,12 @@ export default function SharePage() {
   };
 
   const deleteComment = async (id: string) => {
-    if (!confirm("Delete this? It will be removed from the review and from any version you save next.")) return;
+    if (!(await confirm({
+      title: 'Delete this annotation?',
+      description: 'It will be removed from the review and from any version you save next.',
+      confirmLabel: 'Delete',
+      tone: 'destructive',
+    }))) return;
 
     if (canEdit && !lock.holdsLock) {
       const acquired = await lock.acquire();
@@ -383,7 +401,7 @@ export default function SharePage() {
     const res = await fetchWithAuth(`${API}/api/comments/${id}`, { method: "DELETE" });
 
     if (!res.ok) {
-      alert(await errorMessage(res, "Failed to delete comment"));
+      notify.error(await errorMessage(res, "Failed to delete comment"));
       return;
     }
 
@@ -397,10 +415,14 @@ export default function SharePage() {
   /** Writes every comment into the PDF and stores it as the next version. */
   const saveAsNewVersion = async () => {
     if (comments.length === 0) {
-      alert("Add a comment or some text before saving a version.");
+      notify.error("Add a comment or some text before saving a version.");
       return;
     }
-    if (!confirm(`Write ${comments.length} annotation(s) into the document and save it as a new version?`)) {
+    if (!(await confirm({
+      title: 'Save annotations as a new version?',
+      description: `${comments.length} annotation${comments.length === 1 ? '' : 's'} will be written into the document and stored as a new version.`,
+      confirmLabel: 'Save version',
+    }))) {
       return;
     }
 
@@ -414,7 +436,7 @@ export default function SharePage() {
 
       if (!res.ok) {
         const body = await res.json().catch(() => null);
-        alert(body?.message || (await res.text().catch(() => "")) || "Could not save the new version");
+        notify.error(body?.message || (await res.text().catch(() => "")) || "Could not save the new version");
         return;
       }
 
@@ -423,7 +445,7 @@ export default function SharePage() {
       if (data?.fileName) await loadPreview(data.fileName);
       await lock.refresh();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Could not save the new version");
+      notify.error(err instanceof Error ? err.message : "Could not save the new version");
     } finally {
       setSavingVersion(false);
     }
@@ -454,6 +476,25 @@ export default function SharePage() {
 
   // ---- Access gate -----------------------------------------------------
   if (!data) {
+    if (linkBlocked) {
+      return (
+        <div className="flex min-h-screen items-center justify-center bg-gray-100 px-6">
+          <div className="w-full max-w-md rounded-xl bg-white p-8 text-center shadow-lg">
+            <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-[#f7ede8]">
+              <LinkIcon className="h-6 w-6 text-[#953002]" />
+            </div>
+            <h1 className="mb-2 text-xl font-semibold text-gray-900">
+              This link is no longer available
+            </h1>
+            <p className="mb-7 text-sm leading-relaxed text-gray-600">{linkBlocked}</p>
+            <p className="text-xs text-gray-400">
+              Ask whoever shared the document with you for a new link.
+            </p>
+          </div>
+        </div>
+      );
+    }
+
     if (checkingAccess && !needsPassword) {
       return (
         <div className="flex items-center justify-center min-h-screen bg-gray-100">

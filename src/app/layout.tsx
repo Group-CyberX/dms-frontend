@@ -28,7 +28,11 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         {children}
-        <Toaster position="bottom-right" />
+        <Toaster
+          position="bottom-right"
+          gutter={10}
+          toastOptions={{ className: "dms-toast" }}
+        />
       </body>
     </html>
   );
