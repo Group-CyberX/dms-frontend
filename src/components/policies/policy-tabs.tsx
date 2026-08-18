@@ -4,8 +4,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { Loader, Play, Plus, Trash2, Unlock, Eye } from 'lucide-react';
 import { fetchWithAuth } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
-import { notify } from '@/lib/feedback';
-import { useConfirm } from '@/hooks/use-confirm';
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081/api';
 
@@ -126,7 +124,6 @@ type RetentionPolicy = {
 };
 
 export function RetentionTab({ canEdit }: { canEdit: boolean }) {
-  const confirm = useConfirm();
   const [policies, setPolicies] = useState<RetentionPolicy[] | null>(null);
   const [creating, setCreating] = useState(false);
   const [preview, setPreview] = useState<{ id: string; titles: string[] } | null>(null);
@@ -141,25 +138,20 @@ export function RetentionTab({ canEdit }: { canEdit: boolean }) {
   useEffect(load, [load]);
 
   const create = async () => {
-    if (!form.name.trim()) { notify.error('Give the policy a name.'); return; }
+    if (!form.name.trim()) { alert('Give the policy a name.'); return; }
     const res = await fetchWithAuth(`${API}/policies/retention`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...form, active: true, matchValue: form.scope === 'TAG' ? form.matchValue : null }),
     });
-    if (!res.ok) { notify.error((await res.text()) || 'Could not save the policy'); return; }
+    if (!res.ok) { alert((await res.text()) || 'Could not save the policy'); return; }
     setCreating(false);
     setForm({ name: '', scope: 'ALL', matchValue: '', retainDays: 365, action: 'FLAG' });
     load();
   };
 
   const remove = async (id: string, name: string) => {
-    if (!(await confirm({
-      title: `Delete retention policy "${name}"?`,
-      description: 'Documents already archived under it are not affected.',
-      confirmLabel: 'Delete policy',
-      tone: 'destructive',
-    }))) return;
+    if (!confirm(`Delete retention policy "${name}"?`)) return;
     await fetchWithAuth(`${API}/policies/retention/${id}`, { method: 'DELETE' });
     load();
   };
@@ -170,16 +162,11 @@ export function RetentionTab({ canEdit }: { canEdit: boolean }) {
   };
 
   const run = async (id: string, action: string) => {
-    if (action === 'ARCHIVE' && !(await confirm({
-      title: 'Archive every due document?',
-      description: "All documents past this policy's retention period move to the recycle bin.",
-      confirmLabel: 'Archive them',
-      tone: 'destructive',
-    }))) return;
+    if (action === 'ARCHIVE' && !confirm('This will move every due document to the recycle bin. Continue?')) return;
     const res = await fetchWithAuth(`${API}/policies/retention/${id}/run`, { method: 'POST' });
-    if (!res.ok) { notify.error('Could not run the policy'); return; }
+    if (!res.ok) { alert('Could not run the policy'); return; }
     const body = await res.json();
-    notify.success(`Policy applied to ${body.affected} document(s).`);
+    alert(`Policy applied to ${body.affected} document(s).`);
     load();
   };
 
@@ -314,7 +301,6 @@ type Rule = {
 };
 
 export function ClassificationTab({ canEdit }: { canEdit: boolean }) {
-  const confirm = useConfirm();
   const [rules, setRules] = useState<Rule[] | null>(null);
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState({ name: '', matchPhrase: '', applyTag: '' });
@@ -326,7 +312,7 @@ export function ClassificationTab({ canEdit }: { canEdit: boolean }) {
 
   const create = async () => {
     if (!form.name.trim() || !form.matchPhrase.trim() || !form.applyTag.trim()) {
-      notify.error('Every field is needed to create a rule.');
+      alert('Every field is needed to create a rule.');
       return;
     }
     const res = await fetchWithAuth(`${API}/policies/classification`, {
@@ -334,28 +320,23 @@ export function ClassificationTab({ canEdit }: { canEdit: boolean }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...form, active: true }),
     });
-    if (!res.ok) { notify.error((await res.text()) || 'Could not save the rule'); return; }
+    if (!res.ok) { alert((await res.text()) || 'Could not save the rule'); return; }
     setCreating(false);
     setForm({ name: '', matchPhrase: '', applyTag: '' });
     load();
   };
 
   const remove = async (id: string, name: string) => {
-    if (!(await confirm({
-      title: `Delete classification rule "${name}"?`,
-      description: 'Tags it has already applied stay on their documents.',
-      confirmLabel: 'Delete rule',
-      tone: 'destructive',
-    }))) return;
+    if (!confirm(`Delete classification rule "${name}"?`)) return;
     await fetchWithAuth(`${API}/policies/classification/${id}`, { method: 'DELETE' });
     load();
   };
 
   const applyAll = async () => {
     const res = await fetchWithAuth(`${API}/policies/classification/apply`, { method: 'POST' });
-    if (!res.ok) { notify.error('Could not run the rules'); return; }
+    if (!res.ok) { alert('Could not run the rules'); return; }
     const body = await res.json();
-    notify.success(`${body.tagsApplied} tag(s) applied.`);
+    alert(`${body.tagsApplied} tag(s) applied.`);
     load();
   };
 
@@ -441,7 +422,6 @@ type LockRow = {
 };
 
 export function LocksTab({ canEdit }: { canEdit: boolean }) {
-  const confirm = useConfirm();
   const [rows, setRows] = useState<LockRow[] | null>(null);
 
   const load = useCallback(() => {
@@ -450,14 +430,9 @@ export function LocksTab({ canEdit }: { canEdit: boolean }) {
   useEffect(load, [load]);
 
   const release = async (id: string, title: string) => {
-    if (!(await confirm({
-      title: `Release the edit lock on "${title}"?`,
-      description: 'Whoever is editing it will lose any unsaved work.',
-      confirmLabel: 'Release lock',
-      tone: 'destructive',
-    }))) return;
+    if (!confirm(`Release the edit lock on "${title}"? Whoever holds it will lose unsaved work.`)) return;
     const res = await fetchWithAuth(`${API}/policies/locks/${id}/release`, { method: 'POST' });
-    if (!res.ok) { notify.error('Could not release the lock'); return; }
+    if (!res.ok) { alert('Could not release the lock'); return; }
     load();
   };
 
@@ -503,7 +478,6 @@ export function LocksTab({ canEdit }: { canEdit: boolean }) {
 type TagRow = { tagId: string; tagName: string; documentCount: number };
 
 export function TagsTab({ canDelete }: { canDelete: boolean }) {
-  const confirm = useConfirm();
   const [rows, setRows] = useState<TagRow[] | null>(null);
   const [filter, setFilter] = useState('');
 
@@ -513,14 +487,9 @@ export function TagsTab({ canDelete }: { canDelete: boolean }) {
   useEffect(load, [load]);
 
   const remove = async (id: string, name: string, count: number) => {
-    if (!(await confirm({
-      title: `Delete the tag "${name}"?`,
-      description: `It will be removed from ${count} document${count === 1 ? '' : 's'}.`,
-      confirmLabel: 'Delete tag',
-      tone: 'destructive',
-    }))) return;
+    if (!confirm(`Delete the tag "${name}"? It will be removed from ${count} document(s).`)) return;
     const res = await fetchWithAuth(`${API}/policies/tags/${id}`, { method: 'DELETE' });
-    if (!res.ok) { notify.error('Could not delete the tag'); return; }
+    if (!res.ok) { alert('Could not delete the tag'); return; }
     load();
   };
 

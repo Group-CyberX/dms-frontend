@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useDropzone } from 'react-dropzone';
 import { Button } from '@/components/ui/button';
-import { notify } from '@/lib/feedback';
 import { getDocument, getDocumentVersions, Document, DocumentVersion, getDocumentTags, addTagToDocument, Tag, uploadNewVersion, downloadDocumentVersion, restoreDocumentVersion, deleteDocumentVersion, getWorkflowStatusByDocument, fetchWithAuth, getDocumentMetadata, addMetadata, updateMetadata, deleteMetadata, DocumentMetadata } from '@/lib/api-client';
 import  ShareDocumentDialog  from '@/components/ui/share/share-document-dialog';
 import ApprovalActions from '@/components/ui/workflow/approval-actions';
@@ -28,10 +27,8 @@ import {
   CheckCircle,
   Link2,
 } from 'lucide-react';
-import { useConfirm } from '@/hooks/use-confirm';
 
 export default function DocumentDetailPage() {
-  const confirm = useConfirm();
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -69,7 +66,7 @@ export default function DocumentDetailPage() {
       await unlockDocument(documentId);
       await lock.refresh();
     } catch {
-      notify.error('Could not release the lock.');
+      alert('Could not release the lock.');
     }
   };
 
@@ -351,7 +348,7 @@ export default function DocumentDetailPage() {
       setMetadata(updatedMeta || []);
     } catch (err) {
       console.error('Error adding metadata:', err);
-      notify.error('Failed to add metadata');
+      alert('Failed to add metadata');
     }
   };
 
@@ -363,24 +360,19 @@ export default function DocumentDetailPage() {
       setMetadata(updatedMeta || []);
     } catch (err) {
       console.error('Error updating metadata:', err);
-      notify.error('Failed to update metadata');
+      alert('Failed to update metadata');
     }
   };
 
   const handleDeleteMeta = async (key: string) => {
-    if (!(await confirm({
-      title: 'Delete this metadata field?',
-      description: 'The field and its value will be removed from this document.',
-      confirmLabel: 'Delete',
-      tone: 'destructive',
-    }))) return;
+    if (!confirm('Are you sure you want to delete this metadata?')) return;
     try {
       await deleteMetadata(documentId, key);
       const updatedMeta = await getDocumentMetadata(documentId);
       setMetadata(updatedMeta || []);
     } catch (err) {
       console.error('Error deleting metadata:', err);
-      notify.error('Failed to delete metadata');
+      alert('Failed to delete metadata');
     }
   };
 
@@ -397,7 +389,7 @@ export default function DocumentDetailPage() {
       setNewTagInput('');
     } catch (err) {
       console.error('Error adding tag:', err);
-      notify.error(err instanceof Error ? err.message : 'Failed to add tag');
+      alert(err instanceof Error ? err.message : 'Failed to add tag');
     } finally {
       setAddingTag(false);
     }
@@ -459,7 +451,7 @@ export default function DocumentDetailPage() {
       globalThis.document.body.removeChild(a);
     } catch (err) {
       console.error('Error downloading version:', err);
-      notify.error(err instanceof Error ? err.message : 'Failed to download version');
+      alert(err instanceof Error ? err.message : 'Failed to download version');
     } finally {
       setDownloadingVersionId(null);
     }
@@ -474,10 +466,10 @@ export default function DocumentDetailPage() {
       setRestoringVersionId(versionId);
       await restoreDocumentVersion(document.document_id, versionId);
       setDocument({ ...document, current_version_id: versionId });
-      notify.success('Version restored successfully');
+      alert('Version restored successfully');
     } catch (err) {
       console.error('Error restoring version:', err);
-      notify.error(err instanceof Error ? err.message : 'Failed to restore version');
+      alert(err instanceof Error ? err.message : 'Failed to restore version');
     } finally {
       setRestoringVersionId(null);
     }

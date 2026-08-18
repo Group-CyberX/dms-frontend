@@ -13,7 +13,6 @@ import {
   getErpConnectionCounts,
   type ErpConnection, type ErpMapping, type ErpTransaction,
 } from '@/lib/api-client';
-import { useConfirm } from '@/hooks/use-confirm';
 
 /**
  * ERP Integration console.
@@ -24,7 +23,6 @@ import { useConfirm } from '@/hooks/use-confirm';
  * parts of the requirements.
  */
 export default function ErpIntegrationPage() {
-  const confirm = useConfirm();
   const role = useAuthStore((s) => s.role);
   const permissions = useAuthStore((s) => s.permissions);
 
@@ -140,12 +138,7 @@ export default function ErpIntegrationPage() {
   };
 
   const handleDelete = async (id: string, name: string) => {
-    if (!(await confirm({
-      title: `Delete the connection "${name}"?`,
-      description: 'Its field mappings go with it. Documents already linked stay linked.',
-      confirmLabel: 'Delete connection',
-      tone: 'destructive',
-    }))) return;
+    if (!confirm(`Delete the connection "${name}" and its field mappings?`)) return;
     try {
       await deleteErpConnection(id);
       if (selectedConnection === id) setSelectedConnection(null);
