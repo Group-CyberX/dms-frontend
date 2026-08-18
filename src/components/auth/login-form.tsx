@@ -9,7 +9,6 @@ import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useAuthStore } from "@/store/auth-store"
-import { notify } from '@/lib/feedback';
 
 // Login form component handling user authentication
 export function LoginForm() {
@@ -75,7 +74,7 @@ const onSubmit = async (data: LoginFormValues) => {
 
   } catch (error) {
     console.error(error);
-    notify.error(error instanceof Error ? error.message : "Login failed");
+    alert(error instanceof Error ? error.message : "Login failed");
   }
 };
 

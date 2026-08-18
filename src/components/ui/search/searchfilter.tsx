@@ -14,7 +14,6 @@ import {
 } from "@/components/ui/select"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { fetchWithAuth } from "@/lib/api-client"
-import { notify } from '@/lib/feedback';
 
 export interface SearchFiltersRef {
   getFilters: () => AdvancedSearchFilters;
@@ -244,7 +243,7 @@ export const SearchFilters = React.forwardRef<SearchFiltersRef, {
 
   const handleSearch = async () => {
     if (!query.trim()) {
-      notify.error("Please enter a search query")
+      alert("Please enter a search query")
       return
     }
 
@@ -265,7 +264,7 @@ export const SearchFilters = React.forwardRef<SearchFiltersRef, {
       }
     } catch (error) {
       console.error("Search error:", error)
-      notify.error("Failed to perform search")
+      alert("Failed to perform search")
     } finally {
       setIsLoading(false)
     }

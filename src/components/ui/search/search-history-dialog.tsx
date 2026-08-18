@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button"
 import { useRouter } from "next/navigation"
 import { getSearchHistory, clearSearchHistory, SearchHistoryItem } from "@/lib/api-client"
 import { Trash2, Loader2 } from "lucide-react"
-import { useConfirm } from '@/hooks/use-confirm';
 
 interface SearchHistoryDialogProps {
   open: boolean
@@ -14,7 +13,6 @@ interface SearchHistoryDialogProps {
 }
 
 export function SearchHistoryDialog({ open, onOpenChange }: SearchHistoryDialogProps) {
-  const confirm = useConfirm();
   const router = useRouter()
   const [history, setHistory] = useState<SearchHistoryItem[]>([])
   const [loading, setLoading] = useState(false)
@@ -42,12 +40,7 @@ export function SearchHistoryDialog({ open, onOpenChange }: SearchHistoryDialogP
   }
 
   const handleClearHistory = async () => {
-    if (!(await confirm({
-      title: 'Clear all search history?',
-      description: 'Your saved searches and recent queries will be removed.',
-      confirmLabel: 'Clear history',
-      tone: 'destructive',
-    }))) {
+    if (!confirm("Are you sure you want to clear all search history?")) {
       return
     }
 

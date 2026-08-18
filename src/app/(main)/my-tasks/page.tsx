@@ -9,7 +9,6 @@ import { useAuthStore } from '@/store/auth-store';
 import ApproveTaskDialog from '@/components/ui/workflow/approve-task-dialog';
 import RejectTaskDialog from '@/components/ui/workflow/reject-task-dialog';
 import { fetchWithAuth, getMyTasks, getTaskSigningContext } from '@/lib/api-client';
-import { notify } from '@/lib/feedback';
 
 type WorkflowInstance = {
   id: number;
@@ -262,7 +261,7 @@ export default function MyTasksPage() {
       closeActionDialog();
     } catch (err) {
       console.error(err);
-      notify.error(`Failed to ${actionType} task`);
+      alert(`Failed to ${actionType} task`);
     } finally {
       setActionLoading(false);
     }
