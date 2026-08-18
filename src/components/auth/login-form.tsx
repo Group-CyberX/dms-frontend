@@ -38,9 +38,19 @@ const onSubmit = async (data: LoginFormValues) => {
       body: JSON.stringify(data),
     });
     
-    // Handle invalid credentials
+    // Show what the server actually said. A wrong password and a deactivated
+    // account are different problems, and only one of them is worth retrying.
     if (!res.ok) {
-      throw new Error("Invalid credentials");
+      let message = "Invalid email or password";
+      try {
+        const body = await res.json();
+        if (body?.message) {
+          message = body.message;
+        }
+      } catch {
+        // No JSON body - keep the default.
+      }
+      throw new Error(message);
     }
 
     const result = await res.json();
@@ -64,7 +74,7 @@ const onSubmit = async (data: LoginFormValues) => {
 
   } catch (error) {
     console.error(error);
-    alert("Login failed");
+    alert(error instanceof Error ? error.message : "Login failed");
   }
 };
 

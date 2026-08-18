@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useDropzone } from 'react-dropzone';
 import { Button } from '@/components/ui/button';
-import { getDocument, getDocumentVersions, Document, DocumentVersion, getDocumentTags, addTagToDocument, Tag, uploadNewVersion, downloadDocumentVersion, restoreDocumentVersion, deleteDocumentVersion, getWorkflows, WorkflowInstance,fetchWithAuth, getDocumentMetadata, addMetadata, updateMetadata, deleteMetadata, DocumentMetadata } from '@/lib/api-client';
+import { getDocument, getDocumentVersions, Document, DocumentVersion, getDocumentTags, addTagToDocument, Tag, uploadNewVersion, downloadDocumentVersion, restoreDocumentVersion, deleteDocumentVersion, getWorkflowStatusByDocument, fetchWithAuth, getDocumentMetadata, addMetadata, updateMetadata, deleteMetadata, DocumentMetadata } from '@/lib/api-client';
 import  ShareDocumentDialog  from '@/components/ui/share/share-document-dialog';
 import ApprovalActions from '@/components/ui/workflow/approval-actions';
 import { DocumentPreview } from '@/components/ui/DocumentPreview';
@@ -219,7 +219,7 @@ export default function DocumentDetailPage() {
         getDocument(documentId),
         getDocumentVersions(documentId),
         getDocumentTags(documentId),
-        getWorkflows(),
+        getWorkflowStatusByDocument(),
         getDocumentMetadata(documentId).catch(() => []),
       ]);
 
@@ -229,22 +229,12 @@ export default function DocumentDetailPage() {
       setMetadata(metadataData || []);
 
       // Find latest workflow for this document
-      const workflows = Array.isArray(workflowsData)
-        ? workflowsData as WorkflowInstance[]
-        : [];
+      // One row per document, already the latest workflow for each.
+      const statusRow = Array.isArray(workflowsData)
+        ? workflowsData.find((row) => String(row.documentId) === String(documentId))
+        : undefined;
 
-      const docWorkflows = workflows.filter(
-        (w) => String(w.documentId ?? w.document_id ?? '') === String(documentId)
-      );
-
-      if (docWorkflows.length > 0) {
-        const latestWorkflow = docWorkflows.reduce((latest, current) =>
-          (current.id && latest.id && current.id > latest.id) ? current : latest
-        );
-        setWorkflowStatus(latestWorkflow.status || null);
-      } else {
-        setWorkflowStatus(null);
-      }
+      setWorkflowStatus(statusRow?.status || null);
 
       // The approval banner is resolved separately by a single request, and
       // deliberately not awaited here so the document appears as soon as it has

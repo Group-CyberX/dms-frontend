@@ -1715,6 +1715,61 @@ export interface DashboardSummary {
  * This replaces four list calls plus one request per active workflow. The
  * counts are computed by the database and the SLA list arrives ready to render.
  */
+export interface DocumentWorkflowStatus {
+  documentId: string;
+  workflowId: number;
+  status: string | null;
+}
+
+/**
+ * Latest workflow status for every document, one short row each.
+ *
+ * The document list and document page previously fetched every workflow row in
+ * the database and reduced it to exactly this in the browser.
+ */
+export async function getWorkflowStatusByDocument(): Promise<DocumentWorkflowStatus[]> {
+  const response = await fetchWithAuth(`${API_BASE_URL}/workflows/status-by-document`);
+  if (!response.ok) {
+    throw new Error(`Failed to load workflow status: ${response.status}`);
+  }
+  return response.json();
+}
+
+export interface MyTaskRow {
+  taskId: number;
+  stepOrder: number;
+  status: string;
+  actionComment: string | null;
+  workflowId: number;
+  workflowName: string | null;
+  workflowStatus: string | null;
+  dueDate: string | null;
+  priority: string | null;
+  templateId: number | null;
+  requiresSignature: boolean;
+  documentId: string | null;
+  documentTitle: string;
+  assigneeLabel: string | null;
+  assignedByLabel: string | null;
+  overdue: boolean;
+}
+
+/**
+ * The signed-in user's tasks, joined to their workflow, document and approval
+ * step by the server and ordered by due date.
+ *
+ * Replaces the My Tasks screen's previous approach of downloading every user,
+ * workflow and document, issuing one request per workflow for its tasks, and
+ * filtering the result in the browser.
+ */
+export async function getMyTasks(): Promise<MyTaskRow[]> {
+  const response = await fetchWithAuth(`${API_BASE_URL}/tasks/my`);
+  if (!response.ok) {
+    throw new Error(`Failed to load tasks: ${response.status}`);
+  }
+  return response.json();
+}
+
 export async function getDashboardSummary(): Promise<DashboardSummary> {
   const response = await fetchWithAuth(`${API_BASE_URL}/dashboard/summary`);
   if (!response.ok) {

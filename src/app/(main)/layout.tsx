@@ -433,8 +433,12 @@ export default function MainLayout({
                     <div className="border-t py-1">
                       <button
                         type="button"
-                        onClick={() => {
-                          useAuthStore.getState().logout();
+                        onClick={async () => {
+                          // logoutAsync, not logout: the local-only version
+                          // clears this browser but leaves the refresh token
+                          // valid on the server, so the session could still be
+                          // renewed by anyone holding it.
+                          await useAuthStore.getState().logoutAsync();
                           router.push("/login");
                         }}
                         className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-100"

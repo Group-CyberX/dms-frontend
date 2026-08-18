@@ -8,20 +8,7 @@ import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/store/auth-store';
 import ApproveTaskDialog from '@/components/ui/workflow/approve-task-dialog';
 import RejectTaskDialog from '@/components/ui/workflow/reject-task-dialog';
-import { fetchWithAuth, getTaskSigningContext } from '@/lib/api-client';
-
-//Logged-in user details
-type CurrentUser = {
-  userId: string;
-  username: string;
-  role: string;
-};
-
-type ApproverOption = {
-  userId: string;
-  username: string;
-  role: string;
-};
+import { fetchWithAuth, getMyTasks, getTaskSigningContext } from '@/lib/api-client';
 
 type WorkflowInstance = {
   id: number;
@@ -44,22 +31,6 @@ type WorkflowTask = {
   stepOrder: number;
   userId: string;
   status: string;
-};
-
-type DocumentSummary = {
-  document_id?: string;
-  id?: string;
-  title?: string;
-  name?: string;
-  documentName?: string;
-  filename?: string;
-};
-
-type WorkflowTemplateStep = {
-  stepOrder: number;
-  approverUserId?: string | null;
-  approverName?: string | null;
-  approverRole?: string | null;
 };
 
 type TaskRow = {
@@ -121,90 +92,23 @@ const priorityClass = (priority: string) => {
     return 'text-red-600';
   };
 
-const normalize = (value: string | null | undefined) => String(value ?? '').trim().toUpperCase();
-
-const formatAssigneeLabel = (
-  taskUserId: string,
-  approvers: ApproverOption[],
-  templateStep?: WorkflowTemplateStep | null
-) => {
-  if (templateStep) {
-    if (templateStep.approverName && templateStep.approverRole) {
-      return `${templateStep.approverName} - ${templateStep.approverRole}`;
-    }
-
-    if (templateStep.approverUserId) {
-      const byTemplateUserId = approvers.find((item) => String(item.userId) === String(templateStep.approverUserId));
-
-      if (byTemplateUserId) {
-        return `${byTemplateUserId.username} - ${byTemplateUserId.role}`;
-      }
-    }
-  }
-
-  const byUserId = approvers.find((item) => String(item.userId) === String(taskUserId));
-
-  if (byUserId) {
-    return `${byUserId.username} - ${byUserId.role}`;
-  }
-
-  const byRole = approvers.find((item) => normalize(item.role) === normalize(taskUserId));
-
-  if (byRole) {
-    return `${byRole.username} - ${byRole.role}`;
-  }
-
-  return taskUserId;
-};
-
-const formatCreatorLabel = (
-  creatorUserId: string | undefined,
-  approvers: ApproverOption[]
-) => {
-  if (!creatorUserId) {
-    return 'Unknown';
-  }
-
-  if (creatorUserId === 'TEMP_USER') {
-    return 'TEMP_USER';
-  }
-
-  const creator = approvers.find((item) => String(item.userId) === String(creatorUserId));
-  if (creator) {
-    return `${creator.username} - ${creator.role}`;
-  }
-
-  return creatorUserId;
-};
-
 export default function MyTasksPage() {
   const router = useRouter();
   const token = useAuthStore((state) => state.accessToken);
   const hasHydrated = useAuthStore((state) => state.hasHydrated);
+  // Name and role come from the session that is already in memory, rather than
+  // a separate request on every visit.
+  const currentUserName = useAuthStore((state) => state.userName);
+  const currentUserRole = useAuthStore((state) => state.role);
   const hasLoadedOnceRef = useRef(false);
   const inFlightRef = useRef(false);
-  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
-  const [approvers, setApprovers] = useState<ApproverOption[]>([]);
-  const [workflows, setWorkflows] = useState<WorkflowInstance[]>([]);
-  const [templateStepsByTemplateId, setTemplateStepsByTemplateId] = useState<Record<string, WorkflowTemplateStep[]>>({});
-  const [documents, setDocuments] = useState<DocumentSummary[]>([]);
-  const [tasks, setTasks] = useState<WorkflowTask[]>([]);
+  const [taskRows, setTaskRows] = useState<TaskRow[]>([]);
   const [activeTask, setActiveTask] = useState<TaskRow | null>(null);
   const [actionType, setActionType] = useState<'approve' | 'reject' | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedFilter, setSelectedFilter] = useState<'all' | 'active' | 'pending' | 'overdue' | 'approved' | 'rejected'>('all');
-
-  const getJson = async (response: Response) => {
-    const text = await response.text();
-
-    if (!text.trim()) {
-      return null;
-    }
-
-    return JSON.parse(text);
-  };
 
   const loadData = useCallback(async () => {
     if (inFlightRef.current) {
@@ -216,91 +120,38 @@ export default function MyTasksPage() {
     setError(null);
 
     try {
-      try {
-        // Fetch current user details
-        const currentUserResponse = await fetchWithAuth('http://localhost:8081/api/users/me', {
-          headers: {
-            'Content-Type': 'application/json',
+      // One request. The server filters to this user's tasks and joins the
+      // workflow, document and approval step, so there is nothing left to
+      // assemble or discard here.
+      const rows = await getMyTasks();
+
+      setTaskRows(
+        rows.map((row) => ({
+          task: {
+            id: row.taskId,
+            instanceId: row.workflowId,
+            stepOrder: row.stepOrder,
+            userId: row.assigneeLabel ?? '',
+            status: row.status,
           },
-        });
-
-        if (currentUserResponse.ok) {
-          const currentUserData = await getJson(currentUserResponse);
-          setCurrentUser(currentUserData);
-        } else {
-          setCurrentUser(null);
-        }
-      } catch {
-        setCurrentUser(null);
-      }
-
-      // Fetch approvers, workflows, and documents in parallel
-      const [approverResponse, workflowResponse, documentResponse] = await Promise.all([
-        fetchWithAuth('http://localhost:8081/api/users'),
-        fetchWithAuth('http://localhost:8081/api/workflows'),
-        fetchWithAuth('http://localhost:8081/api/documents?all=true'),
-      ]);
-
-      if (!approverResponse.ok) {
-        throw new Error(`Failed to load approvers: ${approverResponse.status}`);
-      }
-
-      if (!workflowResponse.ok) {
-        throw new Error(`Failed to load workflows: ${workflowResponse.status}`);
-      }
-
-      if (!documentResponse.ok) {
-        throw new Error(`Failed to load documents: ${documentResponse.status}`);
-      }
-
-      const approverData = await getJson(approverResponse);
-      const workflowData = await getJson(workflowResponse);
-      const documentData = await getJson(documentResponse);
-
-      setApprovers(Array.isArray(approverData) ? approverData : []);
-      setWorkflows(Array.isArray(workflowData) ? workflowData : []);
-      setDocuments(Array.isArray(documentData) ? documentData : []);
-
-      // Extract unique template IDs from workflows to minimize API calls for steps
-      const uniqueTemplateIds = Array.from(
-        new Set(
-          (Array.isArray(workflowData) ? workflowData : [])
-            .map((workflow: WorkflowInstance) => workflow.templateId)
-            .filter((templateId): templateId is number => templateId !== null)
-        )
+          workflow: {
+            id: row.workflowId,
+            documentId: row.documentId ?? '',
+            templateId: row.templateId,
+            workflowName: row.workflowName ?? '',
+            priority: row.priority ?? '',
+            dueDate: row.dueDate ?? '',
+            status: row.workflowStatus ?? '',
+            createdByUserId: '',
+          },
+          documentTitle: row.documentTitle,
+          documentId: row.documentId ?? '',
+          assigneeLabel: row.assigneeLabel ?? '',
+          assignedByLabel: row.assignedByLabel ?? '',
+          isAssignedToMe: true,
+          isOverdue: row.overdue,
+        }))
       );
-
-      // Fetch steps for each unique template ID in parallel
-      const templateStepEntries = await Promise.all(
-        uniqueTemplateIds.map(async (templateId) => {
-          const stepResponse = await fetchWithAuth(`http://localhost:8081/api/templates/${templateId}/steps`);
-
-          if (!stepResponse.ok) {
-            return [String(templateId), [] as WorkflowTemplateStep[]] as const;
-          }
-
-          const stepData = await getJson(stepResponse);
-          return [String(templateId), Array.isArray(stepData) ? stepData : []] as const;
-        })
-      );
-
-      setTemplateStepsByTemplateId(Object.fromEntries(templateStepEntries));
-
-      // For each workflow, fetch its tasks and flatten the results
-      const workflowTasksNested = await Promise.all(
-        (Array.isArray(workflowData) ? workflowData : []).map(async (workflow: WorkflowInstance) => {
-          const taskResponse = await fetchWithAuth(`http://localhost:8081/api/tasks/instance/${workflow.id}`);
-
-          if (!taskResponse.ok) {
-            return [] as WorkflowTask[];
-          }
-
-          const taskData = await getJson(taskResponse);
-          return Array.isArray(taskData) ? taskData : [];
-        })
-      );
-
-      setTasks(workflowTasksNested.flat());
     } catch (err) {
       console.error(err);
       setError('Failed to load tasks. Please try again.');
@@ -324,63 +175,6 @@ export default function MyTasksPage() {
     loadData();
   }, [hasHydrated, token, loadData]);
 
-  const taskRows: TaskRow[] = useMemo(() => {
-    return tasks
-      .map((task) => {
-        // Find the related workflow for this task
-        const workflow = workflows.find((item) => item.id === task.instanceId) ?? null;
-        // Find the related document for this workflow
-        const workflowDocumentId = workflow?.documentId ?? workflow?.document_id ?? '';
-        const document = documents.find(
-          (item) => String(item.document_id ?? item.id ?? '') === String(workflowDocumentId)
-        );
-        const templateStep =
-          workflow?.templateId !== null && workflow?.templateId !== undefined
-            ? templateStepsByTemplateId[String(workflow.templateId)]?.find(
-                (step) => Number(step.stepOrder) === Number(task.stepOrder)
-              ) ?? null
-            : null;
-
-        const assigneeLabel = formatAssigneeLabel(task.userId, approvers, templateStep);
-        const assignedByLabel = formatCreatorLabel(workflow?.createdByUserId, approvers);
-
-        // Determine if the task is assigned to the current user based on user ID or role
-        const isAssignedToMe = currentUser
-          ? String(task.userId) === String(currentUser.userId) ||
-            normalize(task.userId) === normalize(currentUser.role)
-          : true;
-
-        // Determine if the task is overdue
-        const dueDate = workflow?.dueDate ? new Date(workflow.dueDate) : null;
-        const isOverdue = Boolean(
-          dueDate &&
-            workflow?.status?.toUpperCase() !== 'APPROVED' &&
-            workflow?.status?.toUpperCase() !== 'REJECTED' &&
-            dueDate.getTime() < new Date().setHours(0, 0, 0, 0)
-        );
-
-        return {
-          task,
-          workflow,
-          documentTitle:
-            document?.title ?? document?.name ?? document?.documentName ?? document?.filename ?? 'Untitled Document',
-          documentId: String(workflowDocumentId),
-          assigneeLabel,
-          assignedByLabel,
-          isAssignedToMe,
-          isOverdue,
-        };
-      })
-      // Show only tasks assigned to current user
-      .filter((row) => row.isAssignedToMe)
-
-      // Sort by workflow due date (soonest first)
-      .sort((left, right) => {
-        const leftWorkflow = left.workflow?.dueDate ? new Date(left.workflow.dueDate).getTime() : 0;
-        const rightWorkflow = right.workflow?.dueDate ? new Date(right.workflow.dueDate).getTime() : 0;
-        return leftWorkflow - rightWorkflow;
-      });
-  }, [approvers, currentUser, documents, tasks, templateStepsByTemplateId, workflows]);
 
   // Calculate summary counts for each status
   const total = taskRows.length;
@@ -535,8 +329,8 @@ export default function MyTasksPage() {
 
       <div className="overflow-hidden rounded-lg bg-white p-4 shadow">
         <div className="mb-4 text-sm text-gray-600">
-          Signed in as <span className="font-semibold text-gray-900">{currentUser?.username ?? 'Unknown user'}</span>
-          {currentUser?.role ? ` (${currentUser.role})` : ''}
+          Signed in as <span className="font-semibold text-gray-900">{currentUserName ?? 'Unknown user'}</span>
+          {currentUserRole ? ` (${currentUserRole})` : ''}
         </div>
 
         {/* Task Table */}

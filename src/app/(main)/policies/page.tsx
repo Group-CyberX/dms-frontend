@@ -27,6 +27,10 @@ type WorkflowTemplate = {
   systemTemplate?: boolean;
   createdAt?: string;
 };
+// Backend origin, so the page also works when it is not served from the same
+// machine as the API.
+const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081/api').replace(/\/api\/?$/, '');
+
 // Template Step structure
 type WorkflowTemplateStep = {
   id?: number;
@@ -37,9 +41,9 @@ type WorkflowTemplateStep = {
   approverRole?: string;
 };
 // Workflow Instance structure (used for counting usage)
-type WorkflowInstance = {
-  id: number;
-  templateId: number | null;
+type TemplateUsage = {
+  templateId: number;
+  usageCount: number;
 };
 // User summary for resolving approver names
 type UserSummary = {
@@ -71,7 +75,7 @@ export default function PoliciesPage() {
 
   const [templates, setTemplates] = useState<WorkflowTemplate[]>([]);
   const [templateSteps, setTemplateSteps] = useState<Record<number, WorkflowTemplateStep[]>>({});
-  const [workflows, setWorkflows] = useState<WorkflowInstance[]>([]);
+  const [usageByTemplate, setUsageByTemplate] = useState<Record<number, number>>({});
   const [users, setUsers] = useState<UserSummary[]>([]);
 
   const [loading, setLoading] = useState(true);
@@ -95,7 +99,7 @@ export default function PoliciesPage() {
       // Fetch all main data in parallel
       const [templateResponse, workflowResponse, userResponse] = await Promise.all([
         fetchWithAuth('http://localhost:8081/api/templates'),
-        fetchWithAuth('http://localhost:8081/api/workflows'),
+        fetchWithAuth(`${API_BASE}/api/workflows/usage-by-template`),
         fetchWithAuth('http://localhost:8081/api/users'),
       ]);
 
@@ -117,29 +121,50 @@ export default function PoliciesPage() {
       const userData = await safeJson(userResponse);
 
       const templateList = Array.isArray(templateData) ? templateData : [];
-      const workflowList = Array.isArray(workflowData) ? workflowData : [];
+      const usageMap: Record<number, number> = {};
+      if (Array.isArray(workflowData)) {
+        for (const entry of workflowData as TemplateUsage[]) {
+          usageMap[entry.templateId] = entry.usageCount;
+        }
+      }
       const userList = Array.isArray(userData) ? userData : [];
 
       // Store in state
       setTemplates(templateList);
-      setWorkflows(workflowList);
+      setUsageByTemplate(usageMap);
       setUsers(userList);
 
-      // Fetch steps for each template
-      const stepEntries = await Promise.all(
-        templateList.map(async (template: WorkflowTemplate) => {
-          const response = await fetchWithAuth(`http://localhost:8081/api/templates/${template.id}/steps`);
+      // Steps for every template in one request, then grouped here, rather
+      // than a separate request per template.
+      const templateIds = templateList
+        .map((template: WorkflowTemplate) => template.id)
+        .filter((id): id is number => id !== null && id !== undefined);
 
-          if (!response.ok) {
-            return [template.id, [] as WorkflowTemplateStep[]] as const;
+      const stepsByTemplate: Record<number, WorkflowTemplateStep[]> = {};
+      for (const id of templateIds) {
+        stepsByTemplate[id] = [];
+      }
+
+      if (templateIds.length > 0) {
+        const stepsResponse = await fetchWithAuth(
+          `${API_BASE}/api/templates/steps?templateIds=${templateIds.join(',')}`
+        );
+
+        if (stepsResponse.ok) {
+          const allSteps = await safeJson(stepsResponse);
+          if (Array.isArray(allSteps)) {
+            for (const step of allSteps as WorkflowTemplateStep[]) {
+              if (step.templateId === undefined) continue;
+              const bucket = stepsByTemplate[step.templateId];
+              if (bucket) {
+                bucket.push(step);
+              }
+            }
           }
+        }
+      }
 
-          const data = await safeJson(response);
-          return [template.id, Array.isArray(data) ? data : []] as const;
-        })
-      );
-
-      setTemplateSteps(Object.fromEntries(stepEntries));
+      setTemplateSteps(stepsByTemplate);
     } catch (err) {
       console.error(err);
       setError('Failed to load workflow templates. Please try again.');
@@ -168,7 +193,7 @@ export default function PoliciesPage() {
       .map((template) => {
         const steps = templateSteps[template.id] ?? [];
         // Count how many workflow instances are using this template
-        const usageCount = workflows.filter((workflow) => workflow.templateId === template.id).length;
+        const usageCount = usageByTemplate[template.id] ?? 0;
 
         const stepCount = steps.length || Number(template.numberOfSteps ?? 0);
         const approverSummary =
@@ -210,7 +235,7 @@ export default function PoliciesPage() {
         const rightDate = right.template.createdAt ? new Date(right.template.createdAt).getTime() : 0;
         return rightDate - leftDate;
       });
-  }, [templates, templateSteps, workflows, users]);
+  }, [templates, templateSteps, usageByTemplate, users]);
 
   // Open create modal
   const handleCreate = () => {
