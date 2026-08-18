@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Plus, X, ArrowRight, Calendar, ChevronDown, Loader } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,6 +9,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { fetchWithAuth } from '@/lib/api-client';
 import { useAuthStore } from '@/store/auth-store';
 import { hasPermission } from '@/lib/access-control';
+import { notify } from '@/lib/feedback';
 
 //Represents an approver in the workflow
 interface Approver {
@@ -20,6 +22,15 @@ interface Approver {
 export default function WorkflowBuilderPage() {
   const role = useAuthStore((state) => state.role);
   const permissions = useAuthStore((state) => state.permissions);
+  const searchParams = useSearchParams();
+
+  // Assigning an upload from the documents list lands here with the document
+  // already chosen.
+  const documentIdParam = searchParams.get('documentId');
+
+  // A document being routed by someone other than its owner has to be in the
+  // picker for them to route it at all.
+  const canViewAllDocuments = hasPermission(permissions, role, 'canViewAllDocuments');
 
   const [documents, setDocuments] = useState<any[]>([]);
   const [templates, setTemplates] = useState<any[]>([]);
@@ -73,6 +84,33 @@ export default function WorkflowBuilderPage() {
 
   const getDocumentFolderId = (document: any) => document?.folder_id ?? document?.folderId ?? '';
 
+  // The folder a document sits in, named by its full path from the top.
+  //
+  // A leaf name on its own is ambiguous once folders nest: "jan" exists under
+  // both contract/2025 and pay sheet/2025, so the type read the same for
+  // documents that have nothing to do with each other. Walking up the parent
+  // links names the whole branch instead. The folder list is already loaded for
+  // the picker, so this costs no extra request.
+  const getFolderPath = (folderId: string) => {
+    const names: string[] = [];
+    const visited = new Set<string>();
+    let currentId = String(folderId ?? '');
+
+    while (currentId && !visited.has(currentId)) {
+      visited.add(currentId);
+
+      const folder = folders.find((candidate) => String(getFolderId(candidate)) === currentId);
+      if (!folder) {
+        break;
+      }
+
+      names.unshift(folder.name);
+      currentId = String(folder?.parent_folder_id ?? folder?.parentFolderId ?? '');
+    }
+
+    return names.join(' / ');
+  };
+
   // Determine document type based on its folder
   const getDocumentTypeForDocument = (documentId: string) => {
     const selectedDoc = documents.find((document) => {
@@ -84,11 +122,7 @@ export default function WorkflowBuilderPage() {
       return '';
     }
 
-    // Find the folder for the selected document
-    const folderId = getDocumentFolderId(selectedDoc);
-    const matchedFolder = folders.find((folder) => String(getFolderId(folder)) === String(folderId));
-
-    return matchedFolder?.name ?? '';
+    return getFolderPath(getDocumentFolderId(selectedDoc));
   };
 
   // Safely parse JSON, handling empty responses
@@ -105,7 +139,9 @@ export default function WorkflowBuilderPage() {
   // Fetch documents, templates, folders, and users on component mount
   // Fetch documents
   useEffect(() => {
-    fetchWithAuth("http://localhost:8081/api/documents")
+    const scope = canViewAllDocuments ? '?all=true' : '';
+
+    fetchWithAuth(`http://localhost:8081/api/documents${scope}`)
       .then(async (res) => {
         if (!res.ok) {
           throw new Error(`Documents request failed: ${res.status}`);
@@ -119,7 +155,7 @@ export default function WorkflowBuilderPage() {
         }
       })
       .catch((err) => console.error(err));
-  }, []);
+  }, [canViewAllDocuments]);
 
   // Fetch workflow templates
   useEffect(() => {
@@ -179,6 +215,32 @@ export default function WorkflowBuilderPage() {
         setAvailableApprovers([]);
       });
   }, []);
+
+  // Apply the document handed over by the documents list. It waits for the
+  // document and folder lists because the document type is read off the folder,
+  // and settles once both have arrived.
+  const prefillApplied = useRef(false);
+  useEffect(() => {
+    if (prefillApplied.current || !documentIdParam || documents.length === 0) {
+      return;
+    }
+
+    const match = documents.find(
+      (document) => String(document?.document_id ?? document?.id ?? '') === String(documentIdParam)
+    );
+    if (!match) {
+      return;
+    }
+
+    setSelectedDocument(documentIdParam);
+
+    const type = getDocumentTypeForDocument(documentIdParam);
+    if (type) {
+      setDocumentType(type);
+      prefillApplied.current = true;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [documentIdParam, documents, folders]);
 
   // Handle template selection and load approvers based on template steps
   const handleTemplateChange = async (templateId: string) => {
@@ -275,35 +337,51 @@ export default function WorkflowBuilderPage() {
     setTemplateName('');
   };
 
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+
+  const clearFormError = (field: string) =>
+    setFormErrors((current) => {
+      if (!current[field]) return current;
+      const next = { ...current };
+      delete next[field];
+      return next;
+    });
+
+  /** Red message under a field, when that field is the problem. */
+  const FieldError = ({ field }: { field: string }) =>
+    formErrors[field] ? (
+      <p className="mt-1.5 text-xs text-red-600">{formErrors[field]}</p>
+    ) : null;
+
   const handleSubmit = async () => {
 
-    // Basic validation
-    if (!selectedDocument || !workflowName || !description || !documentType || !priority || !dueDate) {
-      alert("Please fill all required fields");
-      return;
-    }
+    // Named per field, and reported together, so the reader fixes everything in
+    // one pass instead of resubmitting to discover the next problem.
+    const errors: Record<string, string> = {};
 
-    if (!workflowType) {
-      alert('Please select a workflow type');
-      return;
-    }
+    if (!selectedDocument) errors.document = "Choose the document this workflow is for.";
+    if (!workflowName) errors.workflowName = "Give the workflow a name.";
+    if (!description) errors.description = "Describe what this workflow is for.";
+    if (!documentType) errors.documentType = "Choose a document type.";
+    if (!priority) errors.priority = "Set a priority.";
+    if (!dueDate) errors.dueDate = "Set a due date.";
+    if (!workflowType) errors.workflowType = "Choose sequential or parallel.";
 
     if (!selectedTemplate && approvers.length === 0) {
-      alert("Add at least one approver");
-      return;
-    }
-
-    // Prevent duplicate approvers
-    const selectedApproverIds = approvers.map((a) => String(a.userId ?? "").trim()).filter(Boolean);
-    if (new Set(selectedApproverIds).size !== selectedApproverIds.length) {
-      alert('Each step must have a unique approver. Please remove duplicates.');
-      return;
+      errors.approvers = "Add at least one approver.";
+    } else {
+      const selectedApproverIds = approvers.map((a) => String(a.userId ?? "").trim()).filter(Boolean);
+      if (new Set(selectedApproverIds).size !== selectedApproverIds.length) {
+        errors.approvers = "Each step needs a different approver.";
+      }
     }
 
     if (saveAsTemplate && !templateName.trim()) {
-      alert("Please enter a template name");
-      return;
+      errors.templateName = "Name the template you are saving.";
     }
+
+    setFormErrors(errors);
+    if (Object.keys(errors).length > 0) return;
     // Prepare request payload
     const payload = {
       documentId: selectedDocument,
@@ -336,12 +414,12 @@ export default function WorkflowBuilderPage() {
         throw new Error(data?.message ?? `Workflow creation failed: ${response.status}`);
       }
 
-      alert('Workflow created successfully');
+      notify.success('Workflow created successfully');
       console.log("Workflow created:", data);
 
     } catch (error) {
       console.error("Error creating workflow:", error);
-      alert(error instanceof Error ? error.message : 'Workflow creation failed');
+      notify.error(error instanceof Error ? error.message : 'Workflow creation failed');
     }
   };
 
@@ -379,6 +457,8 @@ export default function WorkflowBuilderPage() {
                       const value = e.target.value;
                       setSelectedDocument(value);
                       setDocumentType(getDocumentTypeForDocument(value));
+                      clearFormError("document");
+                      clearFormError("documentType");
                     }}
                     required
                     className="w-full h-9 px-3 py-2 border border-input rounded-md bg-transparent text-sm shadow-xs focus:outline-none focus:ring-[3px] focus:ring-ring/50 focus:border-ring"
@@ -390,6 +470,7 @@ export default function WorkflowBuilderPage() {
                       </option>
                     ))}
                   </select>
+                  <FieldError field="document" />
                 </div>
 
                 {/* Workflow Template */}
@@ -419,10 +500,11 @@ export default function WorkflowBuilderPage() {
                   <Input
                     type="text"
                     value={workflowName}
-                    onChange={(e) => setWorkflowName(e.target.value)}
+                    onChange={(e) => { setWorkflowName(e.target.value); clearFormError("workflowName"); }}
                     placeholder="Enter workflow name"
                     required
                   />
+                  <FieldError field="workflowName" />
                 </div>
 
                 {/* Description */}
@@ -433,12 +515,13 @@ export default function WorkflowBuilderPage() {
                   <textarea
                     placeholder="Describe the workflow purpose and when it applies"
                     value={description}
-                    onChange={(e) => setDescription(e.target.value)}
+                    onChange={(e) => { setDescription(e.target.value); clearFormError("description"); }}
                     rows={3}
                     disabled={isTemplateLocked}
                     required
                     className="w-full px-3 py-2 border border-input rounded-md bg-transparent text-sm shadow-xs focus:outline-none focus:ring-[3px] focus:ring-ring/50 focus:border-ring"
                     />
+                  <FieldError field="description" />
                 </div>
 
                 <div>
@@ -448,7 +531,7 @@ export default function WorkflowBuilderPage() {
                   <div className="relative">
                     <select
                       value={documentType}
-                      onChange={(e) => setDocumentType(e.target.value)}
+                      onChange={(e) => { setDocumentType(e.target.value); clearFormError("documentType"); }}
                       disabled={isTemplateLocked}
                       required
                       className="w-full h-9 px-3 py-2 border border-input rounded-md bg-transparent text-sm shadow-xs focus:outline-none focus:ring-[3px] focus:ring-ring/50 focus:border-ring appearance-none"
@@ -461,6 +544,7 @@ export default function WorkflowBuilderPage() {
                       ))}
                     </select>
                     <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+                    <FieldError field="documentType" />
                   </div>
               </div>
 
@@ -470,7 +554,7 @@ export default function WorkflowBuilderPage() {
                   <div className="relative w-48">
                     <select
                       value={workflowType}
-                      onChange={(e) => setWorkflowType(e.target.value as 'SEQUENTIAL' | 'PARALLEL' | '')}
+                      onChange={(e) => { setWorkflowType(e.target.value as 'SEQUENTIAL' | 'PARALLEL' | ''); clearFormError("workflowType"); }}
                       disabled={isTemplateLocked}
                       required
                       className="w-full h-9 px-3 py-2 border border-input rounded-md bg-transparent text-sm shadow-xs focus:outline-none focus:ring-[3px] focus:ring-ring/50 focus:border-ring appearance-none"
@@ -482,12 +566,14 @@ export default function WorkflowBuilderPage() {
                       <option value="PARALLEL">Parallel</option>
                     </select>
                     <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+                    <FieldError field="workflowType" />
                   </div>
                 </div>
             
 
                 {/* Approval Chain */}
                 <div>
+                  <FieldError field="approvers" />
                   <div className="flex items-center justify-between mb-3">
                     <label className="block text-sm font-medium text-gray-700">
                       Approval Chain <span className="text-red-500">*</span>
@@ -496,7 +582,7 @@ export default function WorkflowBuilderPage() {
                       type="button"
                       variant="ghost"
                       size="sm"
-                      onClick={addApprover}
+                      onClick={() => { addApprover(); clearFormError("approvers"); }}
                       disabled={isTemplateLocked}
                       className="text-[#000000] hover:text-[#000000] hover:bg-[#5c5858]/10 border border-gray-300"
                     >
@@ -569,11 +655,12 @@ export default function WorkflowBuilderPage() {
                     <Input
                       type="date"
                       value={dueDate}
-                      onChange={(e) => setDueDate(e.target.value)}
+                      onChange={(e) => { setDueDate(e.target.value); clearFormError("dueDate"); }}
                       min={new Date().toISOString().split("T")[0]}
                       required
                       className="pr-10"
                     />
+                    <FieldError field="dueDate" />
                   </div>
                 </div>
 
@@ -584,7 +671,7 @@ export default function WorkflowBuilderPage() {
                   </label>
                   <select
                     value={priority}
-                    onChange={(e) => setPriority(e.target.value)}
+                    onChange={(e) => { setPriority(e.target.value); clearFormError("priority"); }}
                     required
                     className="w-full h-9 px-3 py-2 border border-input rounded-md bg-transparent text-sm shadow-xs focus:outline-none focus:ring-[3px] focus:ring-ring/50 focus:border-ring"
                   >
@@ -594,6 +681,7 @@ export default function WorkflowBuilderPage() {
                     <option value="HIGH">High</option>
                     <option value="URGENT">Urgent</option>
                   </select>
+                  <FieldError field="priority" />
                 </div>
 
                 {/* Digital signature requirement */}
@@ -636,9 +724,10 @@ export default function WorkflowBuilderPage() {
                         className="w-full h-9 px-3 py-2 border border-input rounded-md bg-transparent text-sm shadow-xs focus:outline-none focus:ring-[3px] focus:ring-ring/50 focus:border-ring"
                         placeholder="Template Name"
                         value={templateName}
-                        onChange={(e) => setTemplateName(e.target.value)}
+                        onChange={(e) => { setTemplateName(e.target.value); clearFormError("templateName"); }}
                       />
                     )}
+                    {saveAsTemplate && <FieldError field="templateName" />}
                   </>
                 )}
 

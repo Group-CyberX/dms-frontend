@@ -31,6 +31,8 @@ interface FolderSidebarProps {
   refreshKey?: number;
   /** Called after a folder delete moves documents to the recycle bin, so the parent can refresh its own document list */
   onDocumentsChanged?: () => void;
+  /** Scope of the document list shown beside this tree, so the counts agree with it */
+  allOwners?: boolean;
 }
 
 export function FolderSidebar({
@@ -38,6 +40,7 @@ export function FolderSidebar({
   onSelectFolder,
   refreshKey = 0,
   onDocumentsChanged,
+  allOwners = false,
 }: FolderSidebarProps) {
   const [tree, setTree] = useState<FolderTreeNode[]>([]);
   const [allDocCount, setAllDocCount] = useState(0);
@@ -92,15 +95,13 @@ export function FolderSidebar({
       // names and parent ids. The tree - structure plus the counts rolled up
       // per folder - comes from the backend rather than being recomputed here.
       //
-      // The counts are deliberately left at the default scope, "my documents",
-      // because that is what the list next to them shows (getDocuments() sends
-      // no `all` flag). Asking for one scope here and rendering the other
+      // The counts take whichever scope the list beside them is using, which is
+      // what allOwners carries in: a role that can see everyone's documents gets
+      // counts for everyone's. Asking for one scope here and rendering the other
       // beside it is what made a folder claim 26 files against a list of 3.
-      // If that list is ever switched to show everyone's documents, this call
-      // has to be given `true` in the same change.
       const [folders, treeRoot] = await Promise.all([
         getFolders(),
-        fetchFolderTree(),
+        fetchFolderTree(allOwners),
       ]);
       const flds: Folder[] = Array.isArray(folders) ? folders : [];
       setFlatFolders(flds);
@@ -117,7 +118,7 @@ export function FolderSidebar({
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [allOwners]);
 
   // Initial load
   useEffect(() => {

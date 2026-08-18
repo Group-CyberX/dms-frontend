@@ -43,10 +43,12 @@ export const PERMISSION_CATALOG: PermissionGroupDefinition[] = [
     visibilityKeys: ["canViewDocument"],
     permissions: [
       { key: "canViewDocument", label: "View" },
+      { key: "canViewAllDocuments", label: "View All Users' Documents" },
       { key: "canCreateDocument", label: "Create" },
       { key: "canEditDocument", label: "Edit" },
       { key: "canDeleteDocument", label: "Delete" },
       { key: "canShareDocument", label: "Share" },
+      { key: "canManageAllDocuments", label: "Manage All Users' Documents" },
     ],
   },
   {
@@ -56,6 +58,7 @@ export const PERMISSION_CATALOG: PermissionGroupDefinition[] = [
     permissions: [
       { key: "canViewSearch", label: "View" },
       { key: "canAdvancedSearchSearch", label: "Advanced Search" },
+      { key: "canSearchAllDocuments", label: "Search All Users' Documents" },
     ],
   },
   {
@@ -87,6 +90,7 @@ export const PERMISSION_CATALOG: PermissionGroupDefinition[] = [
     visibilityKeys: ["canViewRecycleBin"],
     permissions: [
       { key: "canViewRecycleBin", label: "View" },
+      { key: "canViewAllDeletedDocuments", label: "View All Deleted Documents" },
       { key: "canRestoreRecycleBin", label: "Restore" },
       { key: "canPermanentlyDeleteRecycleBin", label: "Permanently Delete" },
     ],

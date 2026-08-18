@@ -8,14 +8,15 @@ import ShareDocumentDialog from '@/components/ui/share/share-document-dialog';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import {
   Plus, Eye, Download, Edit2, FileText, Loader, Trash2, Share2, MoveRight,
-  LayoutGrid, List, MoreHorizontal, Lock,
+  LayoutGrid, List, MoreHorizontal, Lock, Send, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import {
   getDocuments,
+  getDocumentsPage,
+  getDocumentStatusCounts,
   getFolders,
   Document,
   Folder,
-  getWorkflowStatusByDocument,
   deleteDocument,
   moveDocuments,
   FolderTreeNode,
@@ -32,6 +33,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { useConfirm } from '@/hooks/use-confirm';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -99,6 +101,8 @@ function getFileColor(filename: string) {
 
 function StatusBadge({ status }: { status: string }) {
   const norm = status.toUpperCase();
+  if (norm === 'NEW')
+    return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-100 text-blue-700">New</span>;
   if (norm === 'PENDING_APPROVAL')
     return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-yellow-100 text-yellow-700">Pending</span>;
   if (norm === 'APPROVED')
@@ -314,9 +318,22 @@ function DocCard({ doc, selected, status, onToggle, onView, onDelete, onMove, on
   );
 }
 
+// ── Status filters ────────────────────────────────────────────────────────────
+
+const STATUS_FILTERS: { label: string; value: string | null }[] = [
+  { label: 'All', value: null },
+  { label: 'New', value: 'NEW' },
+  { label: 'Pending', value: 'PENDING_APPROVAL' },
+  { label: 'Approved', value: 'APPROVED' },
+  { label: 'Rejected', value: 'REJECTED' },
+];
+
+const PAGE_SIZES = [10, 25, 50];
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function DocumentsPage() {
+  const confirm = useConfirm();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -331,9 +348,34 @@ export default function DocumentsPage() {
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [documents, setDocuments] = useState<Document[]>([]);
-  const [docWorkflowStatus, setDocWorkflowStatus] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Roles holding canViewAllDocuments triage what everyone else uploaded, so they
+  // start on the NEW queue rather than on the whole library.
+  const canViewAll = hasPermission(permissions, role, 'canViewAllDocuments');
+  const canAssign = canViewAll && hasPermission(permissions, role, 'canCreateWorkflow');
+
+  // null is "All"; undefined means the user has not picked yet, so the triage
+  // default applies. Permissions are restored from storage after the first
+  // render, so deriving the default keeps it correct once they arrive without
+  // ever overriding a filter the user has since chosen.
+  const [statusChoice, setStatusChoice] = useState<string | null | undefined>(undefined);
+  const statusFilter = statusChoice === undefined ? (canViewAll ? 'NEW' : null) : statusChoice;
+
+  const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(25);
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalElements, setTotalElements] = useState(0);
+
+  // The list is filtered by the database, so typing must not fire a request per
+  // keystroke.
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   // Incrementing this tells FolderSidebar to reload its own data
   const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
@@ -360,37 +402,39 @@ export default function DocumentsPage() {
     if (!silent) setLoading(true);
     setError(null);
 
-    const [docsResult, workflowsResult] = await Promise.allSettled([
-      getDocuments(),
-      getWorkflowStatusByDocument(),
+    const [pageResult, countsResult] = await Promise.allSettled([
+      getDocumentsPage({
+        page,
+        size: pageSize,
+        status: statusFilter,
+        folderId: selectedFolderId,
+        search: debouncedSearch || undefined,
+        all: canViewAll,
+      }),
+      getDocumentStatusCounts(canViewAll),
     ]);
 
-    if (docsResult.status === 'fulfilled') {
-      setDocuments(Array.isArray(docsResult.value) ? docsResult.value : []);
+    if (pageResult.status === 'fulfilled') {
+      setDocuments(pageResult.value.content ?? []);
+      setTotalPages(pageResult.value.totalPages ?? 0);
+      setTotalElements(pageResult.value.totalElements ?? 0);
     } else {
-      console.error('Failed to fetch documents:', docsResult.reason);
+      console.error('Failed to fetch documents:', pageResult.reason);
       setError('Failed to load documents');
       setDocuments([]);
+      setTotalPages(0);
+      setTotalElements(0);
     }
 
-    if (workflowsResult.status === 'fulfilled') {
-      try {
-        // Already one row per document, latest first, resolved by the server.
-        const statusRecord: Record<string, string> = {};
-        for (const row of workflowsResult.value) {
-          statusRecord[row.documentId] = row.status ?? '';
-        }
-        setDocWorkflowStatus(statusRecord);
-      } catch (e) {
-        console.warn('Failed to build workflow status map', e);
-      }
+    if (countsResult.status === 'fulfilled') {
+      setStatusCounts(countsResult.value ?? {});
     } else {
-      // Workflow status is supplementary (badges only) — don't let it block the document list.
-      console.warn('Failed to fetch workflows, continuing without workflow status:', workflowsResult.reason);
+      // Chip counts are decoration — never let them block the list.
+      console.warn('Failed to fetch document status counts:', countsResult.reason);
     }
 
     if (!silent) setLoading(false);
-  }, []);
+  }, [page, pageSize, statusFilter, selectedFolderId, debouncedSearch, canViewAll]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -401,13 +445,19 @@ export default function DocumentsPage() {
       const params = new URLSearchParams(searchParams.toString());
       if (id === null) params.delete('folder');
       else params.set('folder', id);
+      setPage(0);
       router.push(`${pathname}?${params.toString()}`);
     },
     [pathname, router, searchParams]
   );
 
   const handleDelete = async (documentId: string, documentTitle: string) => {
-    if (!window.confirm(`Delete "${documentTitle}"? This cannot be undone.`)) return;
+    if (!(await confirm({
+      title: `Delete "${documentTitle}"?`,
+      description: 'It will be moved to the recycle bin, where it can still be restored.',
+      confirmLabel: 'Delete',
+      tone: 'destructive',
+    }))) return;
     try {
       await deleteDocument(documentId);
       // Optimistic: remove immediately from local state
@@ -463,18 +513,15 @@ export default function DocumentsPage() {
   };
 
   const toggleAll = () => {
-    if (selectedDocIds.size === filteredDocuments.length) setSelectedDocIds(new Set());
-    else setSelectedDocIds(new Set(filteredDocuments.map((d) => d.document_id)));
+    if (selectedDocIds.size === documents.length) setSelectedDocIds(new Set());
+    else setSelectedDocIds(new Set(documents.map((d) => d.document_id)));
   };
 
-  const filteredDocuments = documents.filter((doc) => {
-    if (doc.is_deleted) return false;
-    if (selectedFolderId !== null && doc.folder_id !== selectedFolderId) return false;
-    if (searchQuery && !doc.title.toLowerCase().includes(searchQuery.toLowerCase())) return false;
-    return true;
-  });
+  const getStatus = (doc: Document) => doc.status ?? 'NEW';
 
-  const getStatus = (docId: string) => docWorkflowStatus[String(docId ?? '')] ?? '';
+  const handleAssign = (documentId: string) => {
+    router.push(`/workflows?documentId=${documentId}`);
+  };
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -486,6 +533,7 @@ export default function DocumentsPage() {
         onSelectFolder={handleSelectFolder}
         refreshKey={sidebarRefreshKey}
         onDocumentsChanged={() => fetchData(true)}
+        allOwners={canViewAll}
       />
 
       {/* Main content */}
@@ -495,7 +543,11 @@ export default function DocumentsPage() {
           <div className="flex items-center justify-between gap-3">
             <div>
               <h1 className="text-2xl font-bold text-gray-900">Documents</h1>
-              <p className="text-gray-500 text-sm mt-0.5">Manage and organize your documents</p>
+              <p className="text-gray-500 text-sm mt-0.5">
+                {canViewAll
+                  ? 'Review and route documents across the organisation'
+                  : 'Manage and organize your documents'}
+              </p>
             </div>
             <div className="flex items-center gap-2">
               {selectedDocIds.size > 0 && (
@@ -521,6 +573,32 @@ export default function DocumentsPage() {
           </div>
         </div>
 
+        {/* Status filters */}
+        <div className="bg-white border-b border-gray-200 px-6 py-2.5 flex items-center gap-1.5 flex-shrink-0">
+          {STATUS_FILTERS.map((filter) => {
+            const active = statusFilter === filter.value;
+            const count = filter.value === null
+              ? Object.values(statusCounts).reduce((sum, n) => sum + n, 0)
+              : statusCounts[filter.value] ?? 0;
+
+            return (
+              <button
+                key={filter.label}
+                type="button"
+                onClick={() => { setStatusChoice(filter.value); setPage(0); }}
+                className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${
+                  active
+                    ? 'bg-[#8B2E00] text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                {filter.label}
+                <span className={`ml-1.5 ${active ? 'text-white/70' : 'text-gray-400'}`}>{count}</span>
+              </button>
+            );
+          })}
+        </div>
+
         {/* Content area */}
         <div className="flex-1 overflow-y-auto p-6">
           <div className="bg-white rounded-xl shadow-sm border border-gray-100">
@@ -531,13 +609,13 @@ export default function DocumentsPage() {
                 {viewMode === 'list' && (
                   <input
                     type="checkbox"
-                    checked={selectedDocIds.size === filteredDocuments.length && filteredDocuments.length > 0}
+                    checked={selectedDocIds.size === documents.length && documents.length > 0}
                     onChange={toggleAll}
                     className="rounded border-gray-300 w-3.5 h-3.5"
                   />
                 )}
                 <span className="text-sm font-medium text-gray-500">
-                  {filteredDocuments.length} document{filteredDocuments.length !== 1 ? 's' : ''}
+                  {totalElements} document{totalElements !== 1 ? 's' : ''}
                 </span>
               </div>
 
@@ -545,7 +623,7 @@ export default function DocumentsPage() {
                 <Input
                   placeholder="Search documents…"
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e) => { setSearchQuery(e.target.value); setPage(0); }}
                   className="w-48 h-8 text-sm bg-gray-50 border-gray-200"
                 />
 
@@ -601,16 +679,22 @@ export default function DocumentsPage() {
             )}
 
             {/* Empty */}
-            {!loading && !error && filteredDocuments.length === 0 && (
+            {!loading && !error && documents.length === 0 && (
               <div className="flex flex-col items-center justify-center py-16">
                 <FileText className="w-14 h-14 text-gray-200 mb-3" />
-                <p className="text-gray-500 font-medium text-sm">No documents found</p>
-                <p className="text-gray-400 text-xs mt-1">Upload a document to get started</p>
+                <p className="text-gray-500 font-medium text-sm">
+                  {statusFilter === 'NEW' && canViewAll ? 'Nothing waiting to be assigned' : 'No documents found'}
+                </p>
+                <p className="text-gray-400 text-xs mt-1">
+                  {statusFilter === 'NEW' && canViewAll
+                    ? 'Every uploaded document has been routed into a workflow'
+                    : 'Upload a document to get started'}
+                </p>
               </div>
             )}
 
             {/* ── LIST VIEW ─────────────────────────────────────────────────── */}
-            {!loading && !error && filteredDocuments.length > 0 && viewMode === 'list' && (
+            {!loading && !error && documents.length > 0 && viewMode === 'list' && (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
@@ -618,21 +702,27 @@ export default function DocumentsPage() {
                       <th className="py-2.5 px-4 w-10">
                         <input
                           type="checkbox"
-                          checked={selectedDocIds.size === filteredDocuments.length && filteredDocuments.length > 0}
+                          checked={selectedDocIds.size === documents.length && documents.length > 0}
                           onChange={toggleAll}
                           className="rounded border-gray-300 w-3.5 h-3.5"
                         />
                       </th>
                       <th className="text-left py-2.5 px-4 font-semibold text-gray-500 text-xs uppercase tracking-wide">Title</th>
+                      {canViewAll && (
+                        <th className="text-left py-2.5 px-4 font-semibold text-gray-500 text-xs uppercase tracking-wide">Owner</th>
+                      )}
                       <th className="text-left py-2.5 px-4 font-semibold text-gray-500 text-xs uppercase tracking-wide">Type</th>
                       <th className="text-left py-2.5 px-4 font-semibold text-gray-500 text-xs uppercase tracking-wide">Created</th>
                       <th className="text-left py-2.5 px-4 font-semibold text-gray-500 text-xs uppercase tracking-wide">Status</th>
                       <th className="text-left py-2.5 px-4 font-semibold text-gray-500 text-xs uppercase tracking-wide">Locked</th>
+                      {canAssign && (
+                        <th className="text-left py-2.5 px-4 font-semibold text-gray-500 text-xs uppercase tracking-wide">Assign</th>
+                      )}
                       <th className="text-left py-2.5 px-4 font-semibold text-gray-500 text-xs uppercase tracking-wide">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredDocuments.map((doc) => (
+                    {documents.map((doc) => (
                       <tr
                         key={doc.document_id}
                         className={`border-b border-gray-50 transition-colors ${
@@ -661,9 +751,12 @@ export default function DocumentsPage() {
                             </p>
                           </div>
                         </td>
+                        {canViewAll && (
+                          <td className="py-3 px-4 text-gray-500 text-xs">{doc.owner_name}</td>
+                        )}
                         <td className="py-3 px-4 text-gray-400 text-xs">{getFileType(doc.title)}</td>
                         <td className="py-3 px-4 text-gray-400 text-xs">{formatDate(doc.created_at)}</td>
-                        <td className="py-3 px-4"><StatusBadge status={getStatus(doc.document_id)} /></td>
+                        <td className="py-3 px-4"><StatusBadge status={getStatus(doc)} /></td>
                         <td className="py-3 px-4">
                           <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
                             doc.is_locked ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
@@ -671,12 +764,25 @@ export default function DocumentsPage() {
                             {doc.is_locked ? 'Locked' : 'Unlocked'}
                           </span>
                         </td>
+                        {canAssign && (
+                          <td className="py-3 px-4 w-28">
+                            {getStatus(doc) === 'NEW' ? (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleAssign(doc.document_id); }}
+                                className="px-2 py-1 rounded bg-[#8B2E00] text-white text-[11px] font-semibold hover:bg-[#7a2401] transition inline-flex items-center gap-1"
+                                title="Start a workflow on this document"
+                              >
+                                <Send className="w-3 h-3" />
+                                Assign
+                              </button>
+                            ) : (
+                              <span className="text-gray-300 text-xs">—</span>
+                            )}
+                          </td>
+                        )}
                         <td className="py-3 px-4">
                           <div className="flex items-center gap-0.5">
                             <button onClick={() => router.push(`/documents/${doc.document_id}`)} className="p-1.5 hover:bg-gray-100 rounded transition" title="View"><Eye className="w-3.5 h-3.5 text-gray-400" /></button>
-                            {hasPermission(permissions, role, "canEditDocument") && (
-                              <button className="p-1.5 hover:bg-gray-100 rounded transition" title="Edit"><Edit2 className="w-3.5 h-3.5 text-gray-400" /></button>
-                            )}
                             <button className="p-1.5 hover:bg-gray-100 rounded transition" title="Download"><Download className="w-3.5 h-3.5 text-gray-400" /></button>
                             {hasPermission(permissions, role, "canEditDocument") && (
                               <button onClick={(e) => { e.stopPropagation(); openMoveSheet(doc.document_id); }} className="p-1.5 hover:bg-blue-50 rounded transition" title="Move"><MoveRight className="w-3.5 h-3.5 text-blue-400" /></button>
@@ -697,14 +803,14 @@ export default function DocumentsPage() {
             )}
 
             {/* ── GRID VIEW ─────────────────────────────────────────────────── */}
-            {!loading && !error && filteredDocuments.length > 0 && viewMode === 'grid' && (
+            {!loading && !error && documents.length > 0 && viewMode === 'grid' && (
               <div className="p-5 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-                {filteredDocuments.map((doc) => (
+                {documents.map((doc) => (
                   <DocCard
                     key={doc.document_id}
                     doc={doc}
                     selected={selectedDocIds.has(doc.document_id)}
-                    status={getStatus(doc.document_id)}
+                    status={getStatus(doc)}
                     onToggle={() => toggleDoc(doc.document_id)}
                     onView={() => router.push(`/documents/${doc.document_id}`)}
                     onDelete={() => handleDelete(doc.document_id, doc.title)}
@@ -712,6 +818,48 @@ export default function DocumentsPage() {
                     onShare={() => setShareTarget({ id: doc.document_id, title: doc.title })}
                   />
                 ))}
+              </div>
+            )}
+
+            {/* Pagination */}
+            {!loading && !error && totalElements > 0 && (
+              <div className="flex items-center justify-between px-5 py-3 border-t border-gray-100">
+                <div className="flex items-center gap-2 text-xs text-gray-500">
+                  <span>Rows per page</span>
+                  <select
+                    value={pageSize}
+                    onChange={(e) => { setPageSize(Number(e.target.value)); setPage(0); }}
+                    className="border border-gray-200 rounded px-1.5 py-1 bg-gray-50 text-gray-700"
+                  >
+                    {PAGE_SIZES.map((size) => (
+                      <option key={size} value={size}>{size}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-3 text-xs text-gray-500">
+                  <span>Page {page + 1} of {Math.max(totalPages, 1)}</span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setPage((p) => Math.max(p - 1, 0))}
+                      disabled={page === 0}
+                      className="p-1.5 rounded border border-gray-200 hover:bg-gray-50 disabled:opacity-40 disabled:hover:bg-transparent transition"
+                      title="Previous page"
+                    >
+                      <ChevronLeft size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPage((p) => p + 1)}
+                      disabled={page + 1 >= totalPages}
+                      className="p-1.5 rounded border border-gray-200 hover:bg-gray-50 disabled:opacity-40 disabled:hover:bg-transparent transition"
+                      title="Next page"
+                    >
+                      <ChevronRight size={14} />
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
           </div>

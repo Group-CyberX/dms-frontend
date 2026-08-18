@@ -25,10 +25,13 @@ import {
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/auth-store';
 import { hasPermission } from '@/lib/access-control';
+import { notify } from '@/lib/feedback';
+import { useConfirm } from '@/hooks/use-confirm';
 
 export default function RecycleBinPage() {
+  const confirm = useConfirm();
   const router = useRouter();
-  const { userName, role, permissions } = useAuthStore();
+  const { role, permissions, accessToken } = useAuthStore();
   const [deletedDocuments, setDeletedDocuments] = useState<Document[]>([]);
   const [filteredDocuments, setFilteredDocuments] = useState<Document[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -41,7 +44,10 @@ export default function RecycleBinPage() {
   const [foldersLoading, setFoldersLoading] = useState(true);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
+    // The session is stored under "accessToken"; nothing ever writes a plain
+    // "token", so reading that alone sent every user straight back to the login
+    // screen and the two fetches below never ran.
+    const token = accessToken || localStorage.getItem('accessToken');
     if (!token) {
       router.push('/login');
       return;
@@ -49,27 +55,23 @@ export default function RecycleBinPage() {
 
     fetchDeletedDocuments();
     fetchDeletedFolders();
-  }, [router]);
+  }, [router, accessToken]);
 
   useEffect(() => {
-    // Filter documents based on search query and current user
-    const filtered = deletedDocuments.filter(doc => {
-      // Only show documents deleted by the current user
-      if (userName && doc.owner_name !== userName) {
-        return false;
-      }
-      // Filter by search query
-      return doc.title.toLowerCase().includes(searchQuery.toLowerCase());
-    });
+    // Only the search query is applied here. Which documents are visible is the
+    // server's decision - it returns the caller's own unless they hold
+    // canManageAllDocuments - and filtering by owner again on top of that hid
+    // exactly the documents a document administrator is meant to restore.
+    const filtered = deletedDocuments.filter(doc =>
+      doc.title.toLowerCase().includes(searchQuery.toLowerCase())
+    );
     setFilteredDocuments(filtered);
-  }, [searchQuery, deletedDocuments, userName]);
+  }, [searchQuery, deletedDocuments]);
 
   const fetchDeletedDocuments = async () => {
     try {
       setLoading(true);
       const data = await getDeletedDocuments();
-      console.log('Deleted documents fetched:', data);
-      console.log('Current userName from auth store:', userName);
       setDeletedDocuments(Array.isArray(data) ? data : []);
       setError(null);
     } catch (err) {
@@ -122,18 +124,9 @@ export default function RecycleBinPage() {
     return formatFileSize(totalBytes);
   };
 
-  const getUserDeletedDocuments = () => {
-    // If userName is not available, return all deleted documents
-    // (assuming backend already filters by current user)
-    if (!userName) {
-      console.log('userName is not set, returning all deleted documents:', deletedDocuments);
-      return deletedDocuments;
-    }
-    // Otherwise filter by owner_name
-    const userDocs = deletedDocuments.filter(doc => doc.owner_name === userName);
-    console.log('Filtering by userName:', userName, 'Found documents:', userDocs);
-    return userDocs;
-  };
+  // Already scoped by the server, so the counts and totals cover exactly what
+  // this user is allowed to see.
+  const getUserDeletedDocuments = () => deletedDocuments;
 
   const getExpiringCount = () => {
     return getUserDeletedDocuments().filter(doc => isExpiringSoon(doc.deleted_at || doc.created_at)).length;
@@ -160,9 +153,11 @@ export default function RecycleBinPage() {
   const handleRestoreSelected = async () => {
     if (selectedIds.size === 0) return;
 
-    const confirmed = window.confirm(
-      `Are you sure you want to restore ${selectedIds.size} document(s)?`
-    );
+    const confirmed = await confirm({
+      title: `Restore ${selectedIds.size} document${selectedIds.size === 1 ? '' : 's'}?`,
+      description: 'They will be moved back to the folders they were deleted from.',
+      confirmLabel: 'Restore',
+    });
 
     if (!confirmed) return;
 
@@ -170,6 +165,7 @@ export default function RecycleBinPage() {
       setActionLoading(true);
       setError(null); // Clear any previous errors
       await restoreMultipleDocuments(Array.from(selectedIds));
+      notify.success(`Restored ${selectedIds.size} document${selectedIds.size === 1 ? '' : 's'}`);
       
       // Remove restored documents from list
       setDeletedDocuments(prevDocs =>
@@ -189,9 +185,12 @@ export default function RecycleBinPage() {
   const handlePermanentlyDeleteSelected = async () => {
     if (selectedIds.size === 0) return;
 
-    const confirmed = window.confirm(
-      `Are you sure you want to permanently delete ${selectedIds.size} document(s)? This action cannot be undone.`
-    );
+    const confirmed = await confirm({
+      title: `Permanently delete ${selectedIds.size} document${selectedIds.size === 1 ? '' : 's'}?`,
+      description: 'This removes the files and every stored version. It cannot be undone.',
+      confirmLabel: 'Delete permanently',
+      tone: 'destructive',
+    });
 
     if (!confirmed) return;
 
@@ -216,13 +215,18 @@ export default function RecycleBinPage() {
   };
 
   const handleRestoreFolder = async (folderId: string, folderName: string) => {
-    const confirmed = window.confirm(`Restore "${folderName}" and everything inside it?`);
+    const confirmed = await confirm({
+      title: `Restore "${folderName}"?`,
+      description: 'The folder and everything inside it will be returned to the library.',
+      confirmLabel: 'Restore',
+    });
     if (!confirmed) return;
 
     try {
       setActionLoading(true);
       setError(null);
       await restoreFolder(folderId);
+      notify.success(`Restored "${folderName}"`);
 
       // Remove restored folder from the trash list
       setDeletedFolders(prevFolders =>
@@ -240,13 +244,18 @@ export default function RecycleBinPage() {
   };
 
   const handleRestoreOne = async (documentId: string, documentTitle: string) => {
-    const confirmed = window.confirm(`Restore "${documentTitle}"?`);
+    const confirmed = await confirm({
+      title: `Restore "${documentTitle}"?`,
+      description: 'It will be moved back to the folder it was deleted from.',
+      confirmLabel: 'Restore',
+    });
     if (!confirmed) return;
 
     try {
       setActionLoading(true);
       setError(null); // Clear any previous errors BEFORE attempting restore
       await restoreDocument(documentId);
+      notify.success(`Restored "${documentTitle}"`);
       
       // Remove restored document from list
       setDeletedDocuments(prevDocs =>
@@ -263,15 +272,19 @@ export default function RecycleBinPage() {
   };
 
   const handlePermanentlyDeleteOne = async (documentId: string, documentTitle: string) => {
-    const confirmed = window.confirm(
-      `Permanently delete "${documentTitle}"? This action cannot be undone.`
-    );
+    const confirmed = await confirm({
+      title: `Permanently delete "${documentTitle}"?`,
+      description: 'This removes the file and every stored version. It cannot be undone.',
+      confirmLabel: 'Delete permanently',
+      tone: 'destructive',
+    });
     if (!confirmed) return;
 
     try {
       setActionLoading(true);
       setError(null); // Clear any previous errors BEFORE attempting delete
       await permanentlyDeleteDocument(documentId);
+      notify.success(`Deleted "${documentTitle}" permanently`);
       
       // Remove deleted document from list
       setDeletedDocuments(prevDocs =>

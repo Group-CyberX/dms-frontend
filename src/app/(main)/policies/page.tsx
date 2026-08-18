@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Pencil, Trash2, FileText, Clock, Layers, Lock, Tag, Loader } from 'lucide-react';
 import { fetchWithAuth } from '@/lib/api-client';
+import { notify } from '@/lib/feedback';
+import { useConfirm } from '@/hooks/use-confirm';
 import { Button } from '@/components/ui/button';
 import CreateWorkflowTemplateDialog from '@/components/ui/workflow/create-workflow-template-dialog';
 import { useAuthStore } from '@/store/auth-store';
@@ -60,6 +62,7 @@ type TemplateRow = {
 };
 
 export default function PoliciesPage() {
+  const confirm = useConfirm();
   const role = useAuthStore((state) => state.role);
   const permissions = useAuthStore((state) => state.permissions);
 
@@ -252,9 +255,12 @@ export default function PoliciesPage() {
   // Delete template
   const handleDelete = async (templateId: number) => {
     const template = templates.find((item) => item.id === templateId);
-    const confirmed = window.confirm(
-      `Delete workflow template "${template?.name ?? 'this template'}"? This will also remove its steps.`
-    );
+    const confirmed = await confirm({
+      title: `Delete workflow template "${template?.name ?? 'this template'}"?`,
+      description: 'Its approval steps go with it. Workflows already running are unaffected.',
+      confirmLabel: 'Delete template',
+      tone: 'destructive',
+    });
 
     if (!confirmed) {
       return;
@@ -272,7 +278,7 @@ export default function PoliciesPage() {
       await loadData();
     } catch (err) {
       console.error(err);
-      alert('Failed to delete workflow template');
+      notify.error('Failed to delete workflow template');
     }
   };
 

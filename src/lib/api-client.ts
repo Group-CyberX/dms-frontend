@@ -178,6 +178,8 @@ export interface Document {
   file_size?: number;
   is_locked: boolean;
   is_deleted: boolean;
+  /** NEW until a workflow is started on it, then that workflow's status. */
+  status?: string | null;
 }
 
 export interface Folder {
@@ -1823,6 +1825,7 @@ export interface DocumentPageParams {
   page?: number;
   size?: number;
   search?: string;
+  status?: string | null;
   folderId?: string | null;
   all?: boolean;
 }
@@ -1834,11 +1837,23 @@ export async function getDocumentsPage(params: DocumentPageParams = {}): Promise
   query.set('size', String(params.size ?? 10));
   if (params.all) query.set('all', 'true');
   if (params.search) query.set('search', params.search);
+  if (params.status) query.set('status', params.status);
   if (params.folderId) query.set('folderId', params.folderId);
 
   const response = await fetchWithAuth(`${API_BASE_URL}/documents/page?${query.toString()}`);
   if (!response.ok) {
     throw new Error(`Failed to load documents: ${response.status}`);
+  }
+  return response.json();
+}
+
+/** Document counts per status, for the filter chips above the list. */
+export async function getDocumentStatusCounts(all = false): Promise<Record<string, number>> {
+  const response = await fetchWithAuth(
+    `${API_BASE_URL}/documents/status-counts${all ? '?all=true' : ''}`
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to load document status counts: ${response.status}`);
   }
   return response.json();
 }
