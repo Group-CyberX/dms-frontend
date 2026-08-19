@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { ChevronDown, X } from "lucide-react";
 import { fetchWithAuth } from '@/lib/api-client';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { notify } from '@/lib/feedback';
 
 type StepApprover = {
@@ -516,52 +517,47 @@ export default function CreateWorkflowTemplateDialog({
                         Step {step.stepOrder} Approver
                       </label>
 
-                      <div className="relative">
-                        <select
-                          value={step.approverUserId}
-                          onChange={(e) => {
-                            if (fieldErrors.approvers) setFieldErrors((prev) => ({ ...prev, approvers: "" }));
+                      <SearchableSelect
+                        value={step.approverUserId}
+                        onChange={(value) => {
+                          if (fieldErrors.approvers) setFieldErrors((prev) => ({ ...prev, approvers: "" }));
 
-                            const selectedUser = availableApprovers.find(
-                              (approver) => String(approver.userId) === e.target.value
-                            );
+                          const selectedUser = availableApprovers.find(
+                            (approver) => String(approver.userId) === value
+                          );
 
-                            setStepApprovers((prev) =>
-                              prev.map((currentStep) =>
-                                currentStep.stepOrder === step.stepOrder
-                                  ? {
-                                    ...currentStep,
-                                    approverUserId: e.target.value,
-                                    approverName: selectedUser?.username ?? "",
-                                    approverRole: selectedUser ? getRoleName(selectedUser) : "",
-                                  }
-                                  : currentStep
-                              )
-                            );
-                          }}
-                          className="w-full h-9 px-3 py-2 border border-input rounded-md bg-transparent text-sm shadow-xs focus:outline-none focus:ring-[3px] focus:ring-ring/50 focus:border-ring appearance-none"
-                        >
-                          <option value="" disabled hidden>
-                            Select approver
-                          </option>
-                          {availableApprovers
-                            // Filter out approvers that are already selected for other steps
-                            .filter((approver) => {
-                              const otherSelected = stepApprovers
-                                .filter((s) => s.stepOrder !== step.stepOrder)
-                                .map((s) => String(s.approverUserId ?? "").trim())
-                                .filter((v) => v !== "");
+                          setStepApprovers((prev) =>
+                            prev.map((currentStep) =>
+                              currentStep.stepOrder === step.stepOrder
+                                ? {
+                                  ...currentStep,
+                                  approverUserId: value,
+                                  approverName: selectedUser?.username ?? "",
+                                  approverRole: selectedUser ? getRoleName(selectedUser) : "",
+                                }
+                                : currentStep
+                            )
+                          );
+                        }}
+                        placeholder="Select approver"
+                        searchPlaceholder="Search by name or role..."
+                        invalid={Boolean(fieldErrors.approvers)}
+                        options={availableApprovers
+                          // Someone already chosen for another step is not offered again.
+                          .filter((approver) => {
+                            const otherSelected = stepApprovers
+                              .filter((s) => s.stepOrder !== step.stepOrder)
+                              .map((s) => String(s.approverUserId ?? "").trim())
+                              .filter((v) => v !== "");
 
-                              return !otherSelected.includes(String(approver.userId));
-                            })
-                            .map((approver) => (
-                              <option key={approver.userId} value={approver.userId}>
-                                {approver.username} - {getRoleName(approver)}
-                              </option>
-                            ))}
-                        </select>
-                        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
-                      </div>
+                            return !otherSelected.includes(String(approver.userId));
+                          })
+                          .map((approver) => ({
+                            value: String(approver.userId),
+                            label: String(approver.username ?? 'Unnamed'),
+                            hint: getRoleName(approver),
+                          }))}
+                      />
                     </div>
                   ))}
                 </div>

@@ -534,6 +534,7 @@ export default function DocumentsPage() {
         onSelectFolder={handleSelectFolder}
         refreshKey={sidebarRefreshKey}
         onDocumentsChanged={() => fetchData(true)}
+        allOwners={canSeeEveryonesDocuments}
       />
 
       {/* Main content */}
