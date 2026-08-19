@@ -9,6 +9,7 @@ import { fetchWithAuth } from '@/lib/api-client';
 import { useAuthStore } from '@/store/auth-store';
 import { hasPermission } from '@/lib/access-control';
 import { notify } from '@/lib/feedback';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 
 //Represents an approver in the workflow
 interface Approver {
@@ -108,8 +109,14 @@ export default function WorkflowBuilderPage() {
 
   // Fetch documents, templates, folders, and users on component mount
   // Fetch documents
+  // A workflow can be started on any document the caller is allowed to see, so
+  // the picker asks for the same scope the documents list uses. Without this an
+  // administrator could only build workflows over their own uploads - which is
+  // exactly the documents that least need routing.
+  const canSeeEveryonesDocuments = hasPermission(permissions, role, 'canViewAllDocuments');
+
   useEffect(() => {
-    fetchWithAuth("http://localhost:8081/api/documents")
+    fetchWithAuth(`http://localhost:8081/api/documents${canSeeEveryonesDocuments ? '?all=true' : ''}`)
       .then(async (res) => {
         if (!res.ok) {
           throw new Error(`Documents request failed: ${res.status}`);
@@ -123,7 +130,7 @@ export default function WorkflowBuilderPage() {
         }
       })
       .catch((err) => console.error(err));
-  }, []);
+  }, [canSeeEveryonesDocuments]);
 
   // Fetch workflow templates
   useEffect(() => {
@@ -380,24 +387,22 @@ export default function WorkflowBuilderPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Select Document <span className="text-red-500">*</span>
                   </label>
-                  <select
+                  <SearchableSelect
                     value={selectedDocument}
-                    onChange={(e) => {
-                      const value = e.target.value;
+                    onChange={(value) => {
                       setSelectedDocument(value);
                       setDocumentType(getDocumentTypeForDocument(value));
                       if (fieldErrors.selectedDocument) setFieldErrors((prev) => ({ ...prev, selectedDocument: "" }));
                     }}
-                    required
-                    className="w-full h-9 px-3 py-2 border border-input rounded-md bg-transparent text-sm shadow-xs focus:outline-none focus:ring-[3px] focus:ring-ring/50 focus:border-ring"
-                  >
-                    <option value=""disabled hidden>Choose a document</option>
-                    {documents.map((doc) => (
-                      <option key={doc.document_id ?? doc.id} value={doc.document_id ?? doc.id}>
-                        {doc.title ?? doc.name ?? doc.documentName ?? doc.filename}
-                      </option>
-                    ))}
-                  </select>
+                    placeholder="Choose a document"
+                    searchPlaceholder="Search documents..."
+                    invalid={Boolean(fieldErrors.selectedDocument)}
+                    options={documents.map((doc) => ({
+                      value: String(doc.document_id ?? doc.id),
+                      label: String(doc.title ?? doc.name ?? doc.documentName ?? doc.filename ?? 'Untitled'),
+                      hint: canSeeEveryonesDocuments ? (doc.owner_name ?? undefined) : undefined,
+                    }))}
+                  />
                   {fieldErrors.selectedDocument && (
                     <p className="mt-1.5 text-sm text-red-600">{fieldErrors.selectedDocument}</p>
                   )}
@@ -559,28 +564,31 @@ export default function WorkflowBuilderPage() {
                         )}
 
                         {/* Approver Select */}
-                        <select
+                        <SearchableSelect
+                          className="flex-1"
                           value={approver.userId}
-                          onChange={(e) => updateApprover(approver.id, e.target.value)}
+                          onChange={(value) => updateApprover(approver.id, value)}
                           disabled={isTemplateLocked}
-                          className="flex-1 h-9 px-3 py-2 border border-input rounded-md bg-transparent text-sm shadow-xs focus:outline-none focus:ring-[3px] focus:ring-ring/50 focus:border-ring"
-                        >
-                          <option value=""disabled hidden>Select approver</option>
-                            {availableApprovers
-                              .filter((opt) => {
-                                const otherSelected = approvers
-                                  .filter((a) => a.id !== approver.id)
-                                  .map((a) => String(a.userId ?? "").trim())
-                                  .filter((v) => v !== "");
+                          placeholder="Select approver"
+                          searchPlaceholder="Search by name or role..."
+                          invalid={Boolean(fieldErrors.approvers)}
+                          options={availableApprovers
+                            .filter((opt) => {
+                              // A person already chosen for another step is not
+                              // offered again, as before.
+                              const otherSelected = approvers
+                                .filter((a) => a.id !== approver.id)
+                                .map((a) => String(a.userId ?? "").trim())
+                                .filter((v) => v !== "");
 
-                                return !otherSelected.includes(String(opt.userId));
-                              })
-                              .map((approverOpt) => (
-                                <option key={approverOpt.userId} value={approverOpt.userId}>
-                                  {approverOpt.username} - {getRoleName(approverOpt)}
-                                </option>
-                              ))}
-                        </select>
+                              return !otherSelected.includes(String(opt.userId));
+                            })
+                            .map((approverOpt) => ({
+                              value: String(approverOpt.userId),
+                              label: String(approverOpt.username ?? 'Unnamed'),
+                              hint: getRoleName(approverOpt),
+                            }))}
+                        />
 
                         {/* Remove Button */}
                         {approvers.length > 1 && !isTemplateLocked && (

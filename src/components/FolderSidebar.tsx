@@ -33,6 +33,11 @@ interface FolderSidebarProps {
   refreshKey?: number;
   /** Called after a folder delete moves documents to the recycle bin, so the parent can refresh its own document list */
   onDocumentsChanged?: () => void;
+  /**
+   * Whose documents the counts describe. Must match the scope of the list
+   * rendered beside them, or a folder badge contradicts the list.
+   */
+  allOwners?: boolean;
 }
 
 export function FolderSidebar({
@@ -40,6 +45,7 @@ export function FolderSidebar({
   onSelectFolder,
   refreshKey = 0,
   onDocumentsChanged,
+  allOwners = false,
 }: FolderSidebarProps) {
   // Deleting a folder soft-deletes every document inside it, whoever owns
   // them, so it is gated on its own permission rather than on being able to
@@ -102,14 +108,12 @@ export function FolderSidebar({
       // per folder - comes from the backend rather than being recomputed here.
       //
       // The counts are deliberately left at the default scope, "my documents",
-      // because that is what the list next to them shows (getDocuments() sends
-      // no `all` flag). Asking for one scope here and rendering the other
-      // beside it is what made a folder claim 26 files against a list of 3.
-      // If that list is ever switched to show everyone's documents, this call
-      // has to be given `true` in the same change.
+      // scoped exactly as the list beside them is. Asking for one scope here
+      // and rendering the other next to it is what made a folder claim 26 files
+      // against a list of 3.
       const [folders, treeRoot] = await Promise.all([
         getFolders(),
-        fetchFolderTree(),
+        fetchFolderTree(allOwners),
       ]);
       const flds: Folder[] = Array.isArray(folders) ? folders : [];
       setFlatFolders(flds);
@@ -126,7 +130,7 @@ export function FolderSidebar({
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [allOwners]);
 
   // Initial load
   useEffect(() => {
