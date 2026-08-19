@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { useRouter } from "next/navigation";
 import { Check, Circle, X } from "lucide-react"
+import { notify } from "@/lib/feedback"
 
 // ── Password-requirement helpers ───────────────────────────────────
 const requirements = [
@@ -46,6 +47,7 @@ export function RegisterForm() {
     register,
     handleSubmit,
     watch,
+    setError,
     formState: { errors, isSubmitting },
   } = useForm<RegisterFormValues>({
     resolver: zodResolver(registerSchema),
@@ -77,15 +79,36 @@ export function RegisterForm() {
     });
 
     if (!res.ok) {
-      throw new Error("Registration failed");
+      // The API answers a rejected field with { message, errors: { field: text } }.
+      // Putting each one back on its own input is the difference between "your
+      // details were rejected" and knowing which detail to fix.
+      const body = await res.json().catch(() => null);
+      const fieldErrors = body?.errors as Record<string, string> | undefined;
+
+      if (fieldErrors) {
+        const fields = ["firstName", "lastName", "email", "password", "phone"] as const;
+        let shown = false;
+
+        for (const field of fields) {
+          if (fieldErrors[field]) {
+            setError(field, { type: "server", message: fieldErrors[field] });
+            shown = true;
+          }
+        }
+
+        if (shown) return;
+      }
+
+      throw new Error(body?.message || "Could not create your account. Try again.");
     }
 
     //  Redirect to login
+    notify.success("Account created. You can sign in now.");
     router.push("/login");
 
   } catch (error) {
     console.error(error);
-    alert("Registration failed");
+    notify.error(error instanceof Error ? error.message : "Could not create your account. Try again.");
   }
 };
 

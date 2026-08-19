@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { Loader, Play, Plus, Trash2, Unlock, Eye } from 'lucide-react';
 import { fetchWithAuth } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/hooks/use-confirm';
+import { notify, apiMessage } from '@/lib/feedback';
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081/api';
 
@@ -124,6 +126,7 @@ type RetentionPolicy = {
 };
 
 export function RetentionTab({ canEdit }: { canEdit: boolean }) {
+  const confirm = useConfirm();
   const [policies, setPolicies] = useState<RetentionPolicy[] | null>(null);
   const [creating, setCreating] = useState(false);
   const [preview, setPreview] = useState<{ id: string; titles: string[] } | null>(null);
@@ -137,21 +140,29 @@ export function RetentionTab({ canEdit }: { canEdit: boolean }) {
   }, []);
   useEffect(load, [load]);
 
+  const [nameError, setNameError] = useState<string | null>(null);
+
   const create = async () => {
-    if (!form.name.trim()) { alert('Give the policy a name.'); return; }
+    if (!form.name.trim()) { setNameError('Give the policy a name.'); return; }
+    setNameError(null);
     const res = await fetchWithAuth(`${API}/policies/retention`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...form, active: true, matchValue: form.scope === 'TAG' ? form.matchValue : null }),
     });
-    if (!res.ok) { alert((await res.text()) || 'Could not save the policy'); return; }
+    if (!res.ok) { notify.error(await apiMessage(res, 'Could not save the policy.')); return; }
     setCreating(false);
     setForm({ name: '', scope: 'ALL', matchValue: '', retainDays: 365, action: 'FLAG' });
     load();
   };
 
   const remove = async (id: string, name: string) => {
-    if (!confirm(`Delete retention policy "${name}"?`)) return;
+    if (!(await confirm({
+      title: `Delete retention policy "${name}"?`,
+      description: 'Documents it covers are left alone; they simply stop being flagged by it.',
+      confirmLabel: 'Delete policy',
+      tone: 'destructive',
+    }))) return;
     await fetchWithAuth(`${API}/policies/retention/${id}`, { method: 'DELETE' });
     load();
   };
@@ -162,11 +173,16 @@ export function RetentionTab({ canEdit }: { canEdit: boolean }) {
   };
 
   const run = async (id: string, action: string) => {
-    if (action === 'ARCHIVE' && !confirm('This will move every due document to the recycle bin. Continue?')) return;
+    if (action === 'ARCHIVE' && !(await confirm({
+      title: 'Archive every document this policy is due on?',
+      description: 'They move to the recycle bin, where they can be restored for 30 days.',
+      confirmLabel: 'Archive documents',
+      tone: 'destructive',
+    }))) return;
     const res = await fetchWithAuth(`${API}/policies/retention/${id}/run`, { method: 'POST' });
-    if (!res.ok) { alert('Could not run the policy'); return; }
+    if (!res.ok) { notify.error(await apiMessage(res, 'Could not run the policy.')); return; }
     const body = await res.json();
-    alert(`Policy applied to ${body.affected} document(s).`);
+    notify.success(`Policy applied to ${body.affected} document(s).`);
     load();
   };
 
@@ -186,9 +202,10 @@ export function RetentionTab({ canEdit }: { canEdit: boolean }) {
         <div className="mb-5 grid gap-3 rounded-lg border border-gray-200 bg-gray-50 p-4 sm:grid-cols-2">
           <label className="text-sm">
             <span className="mb-1 block font-medium text-gray-700">Name</span>
-            <input className="w-full rounded border border-gray-300 px-2 py-1.5" value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
+            <input className={`w-full rounded border px-2 py-1.5 ${nameError ? 'border-red-500' : 'border-gray-300'}`} value={form.name}
+              onChange={(e) => { setForm({ ...form, name: e.target.value }); if (nameError) setNameError(null); }}
               placeholder="Invoices — 7 year retention" />
+            {nameError && <span className="mt-1 block text-sm text-red-600">{nameError}</span>}
           </label>
           <label className="text-sm">
             <span className="mb-1 block font-medium text-gray-700">Keep for (days)</span>
@@ -301,6 +318,7 @@ type Rule = {
 };
 
 export function ClassificationTab({ canEdit }: { canEdit: boolean }) {
+  const confirm = useConfirm();
   const [rules, setRules] = useState<Rule[] | null>(null);
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState({ name: '', matchPhrase: '', applyTag: '' });
@@ -310,33 +328,46 @@ export function ClassificationTab({ canEdit }: { canEdit: boolean }) {
   }, []);
   useEffect(load, [load]);
 
+  const [ruleErrors, setRuleErrors] = useState<Record<string, string>>({});
+
   const create = async () => {
-    if (!form.name.trim() || !form.matchPhrase.trim() || !form.applyTag.trim()) {
-      alert('Every field is needed to create a rule.');
+    const errors: Record<string, string> = {};
+    if (!form.name.trim()) errors.name = 'Name the rule.';
+    if (!form.matchPhrase.trim()) errors.matchPhrase = 'Give the phrase to look for.';
+    if (!form.applyTag.trim()) errors.applyTag = 'Name the tag to apply.';
+
+    if (Object.keys(errors).length > 0) {
+      setRuleErrors(errors);
       return;
     }
+    setRuleErrors({});
     const res = await fetchWithAuth(`${API}/policies/classification`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...form, active: true }),
     });
-    if (!res.ok) { alert((await res.text()) || 'Could not save the rule'); return; }
+    if (!res.ok) { notify.error(await apiMessage(res, 'Could not save the rule.')); return; }
     setCreating(false);
     setForm({ name: '', matchPhrase: '', applyTag: '' });
     load();
   };
 
   const remove = async (id: string, name: string) => {
-    if (!confirm(`Delete classification rule "${name}"?`)) return;
+    if (!(await confirm({
+      title: `Delete classification rule "${name}"?`,
+      description: 'Tags it has already applied stay on their documents.',
+      confirmLabel: 'Delete rule',
+      tone: 'destructive',
+    }))) return;
     await fetchWithAuth(`${API}/policies/classification/${id}`, { method: 'DELETE' });
     load();
   };
 
   const applyAll = async () => {
     const res = await fetchWithAuth(`${API}/policies/classification/apply`, { method: 'POST' });
-    if (!res.ok) { alert('Could not run the rules'); return; }
+    if (!res.ok) { notify.error(await apiMessage(res, 'Could not run the rules.')); return; }
     const body = await res.json();
-    alert(`${body.tagsApplied} tag(s) applied.`);
+    notify.success(`${body.tagsApplied} tag(s) applied.`);
     load();
   };
 
@@ -361,18 +392,21 @@ export function ClassificationTab({ canEdit }: { canEdit: boolean }) {
         <div className="mb-5 grid gap-3 rounded-lg border border-gray-200 bg-gray-50 p-4 sm:grid-cols-3">
           <label className="text-sm">
             <span className="mb-1 block font-medium text-gray-700">Rule name</span>
-            <input className="w-full rounded border border-gray-300 px-2 py-1.5" value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Purchase orders" />
+            <input className={`w-full rounded border px-2 py-1.5 ${ruleErrors.name ? 'border-red-500' : 'border-gray-300'}`} value={form.name}
+              onChange={(e) => { setForm({ ...form, name: e.target.value }); if (ruleErrors.name) setRuleErrors((prev) => ({ ...prev, name: '' })); }} placeholder="Purchase orders" />
+            {ruleErrors.name && <span className="mt-1 block text-sm text-red-600">{ruleErrors.name}</span>}
           </label>
           <label className="text-sm">
             <span className="mb-1 block font-medium text-gray-700">When it contains</span>
-            <input className="w-full rounded border border-gray-300 px-2 py-1.5" value={form.matchPhrase}
-              onChange={(e) => setForm({ ...form, matchPhrase: e.target.value })} placeholder="PO-" />
+            <input className={`w-full rounded border px-2 py-1.5 ${ruleErrors.matchPhrase ? 'border-red-500' : 'border-gray-300'}`} value={form.matchPhrase}
+              onChange={(e) => { setForm({ ...form, matchPhrase: e.target.value }); if (ruleErrors.matchPhrase) setRuleErrors((prev) => ({ ...prev, matchPhrase: '' })); }} placeholder="PO-" />
+            {ruleErrors.matchPhrase && <span className="mt-1 block text-sm text-red-600">{ruleErrors.matchPhrase}</span>}
           </label>
           <label className="text-sm">
             <span className="mb-1 block font-medium text-gray-700">Apply tag</span>
-            <input className="w-full rounded border border-gray-300 px-2 py-1.5" value={form.applyTag}
-              onChange={(e) => setForm({ ...form, applyTag: e.target.value })} placeholder="purchase-order" />
+            <input className={`w-full rounded border px-2 py-1.5 ${ruleErrors.applyTag ? 'border-red-500' : 'border-gray-300'}`} value={form.applyTag}
+              onChange={(e) => { setForm({ ...form, applyTag: e.target.value }); if (ruleErrors.applyTag) setRuleErrors((prev) => ({ ...prev, applyTag: '' })); }} placeholder="purchase-order" />
+            {ruleErrors.applyTag && <span className="mt-1 block text-sm text-red-600">{ruleErrors.applyTag}</span>}
           </label>
           <div className="flex items-end gap-2 sm:col-span-3">
             <Button onClick={create} className="bg-[#953002] hover:bg-[#7a2702]">Save rule</Button>
@@ -422,6 +456,7 @@ type LockRow = {
 };
 
 export function LocksTab({ canEdit }: { canEdit: boolean }) {
+  const confirm = useConfirm();
   const [rows, setRows] = useState<LockRow[] | null>(null);
 
   const load = useCallback(() => {
@@ -430,9 +465,14 @@ export function LocksTab({ canEdit }: { canEdit: boolean }) {
   useEffect(load, [load]);
 
   const release = async (id: string, title: string) => {
-    if (!confirm(`Release the edit lock on "${title}"? Whoever holds it will lose unsaved work.`)) return;
+    if (!(await confirm({
+      title: `Release the edit lock on "${title}"?`,
+      description: 'Whoever is holding it loses any unsaved work.',
+      confirmLabel: 'Release lock',
+      tone: 'destructive',
+    }))) return;
     const res = await fetchWithAuth(`${API}/policies/locks/${id}/release`, { method: 'POST' });
-    if (!res.ok) { alert('Could not release the lock'); return; }
+    if (!res.ok) { notify.error(await apiMessage(res, 'Could not release the lock.')); return; }
     load();
   };
 
@@ -478,6 +518,7 @@ export function LocksTab({ canEdit }: { canEdit: boolean }) {
 type TagRow = { tagId: string; tagName: string; documentCount: number };
 
 export function TagsTab({ canDelete }: { canDelete: boolean }) {
+  const confirm = useConfirm();
   const [rows, setRows] = useState<TagRow[] | null>(null);
   const [filter, setFilter] = useState('');
 
@@ -487,9 +528,14 @@ export function TagsTab({ canDelete }: { canDelete: boolean }) {
   useEffect(load, [load]);
 
   const remove = async (id: string, name: string, count: number) => {
-    if (!confirm(`Delete the tag "${name}"? It will be removed from ${count} document(s).`)) return;
+    if (!(await confirm({
+      title: `Delete the tag "${name}"?`,
+      description: `It is removed from ${count} document(s). The documents themselves are untouched.`,
+      confirmLabel: 'Delete tag',
+      tone: 'destructive',
+    }))) return;
     const res = await fetchWithAuth(`${API}/policies/tags/${id}`, { method: 'DELETE' });
-    if (!res.ok) { alert('Could not delete the tag'); return; }
+    if (!res.ok) { notify.error(await apiMessage(res, 'Could not delete the tag.')); return; }
     load();
   };
 

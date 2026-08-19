@@ -114,12 +114,19 @@ export const useAuthStore = create<AuthState>()(
           localStorage.removeItem("dms-auth-store");
         }
 
+        // Every field that identifies the person has to go, not just the
+        // tokens. profilePicture is held in memory rather than persisted, so
+        // signing out and straight back in as someone else left the previous
+        // account's photo sitting in the header.
         set({
           accessToken: null,
           refreshToken: null,
           email: null,
           role: null,
+          userId: null,
+          userName: null,
           permissions: {},
+          profilePicture: null,
           hasHydrated: true,
         });
       },

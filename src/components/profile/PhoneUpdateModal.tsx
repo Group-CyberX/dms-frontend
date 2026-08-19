@@ -5,6 +5,7 @@ import { Label } from "@/components/ui/label";
 import { X, Phone } from "lucide-react";
 import { apiClient } from "@/lib/api-client";
 import toast from "react-hot-toast";
+import { SRI_LANKA_PHONE } from "@/lib/schemas/register-schema";
 
 interface PhoneUpdateModalProps {
   currentPhone: string;
@@ -19,8 +20,20 @@ export function PhoneUpdateModal({ currentPhone, onClose, onSuccess }: PhoneUpda
   const [loading, setLoading] = useState(false);
 
   const handleSendOtp = async () => {
-    if (!newPhone || newPhone === currentPhone) {
-      toast.error("Please enter a new, valid phone number");
+    // The format was never checked here, so anything at all could be saved as
+    // a phone number. Same rule the registration form uses.
+    if (!newPhone.trim()) {
+      toast.error("Enter a phone number");
+      return;
+    }
+
+    if (!SRI_LANKA_PHONE.test(newPhone.trim())) {
+      toast.error("Enter a Sri Lankan number, e.g. 0771234567 or +94771234567");
+      return;
+    }
+
+    if (newPhone.trim() === currentPhone) {
+      toast.error("That is already your phone number");
       return;
     }
     

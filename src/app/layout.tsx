@@ -28,7 +28,25 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         {children}
-        <Toaster position="bottom-right" />
+        <Toaster
+          position="bottom-right"
+          gutter={10}
+          toastOptions={{
+            duration: 4000,
+            style: {
+              background: "#ffffff",
+              color: "#1e293b",
+              border: "1px solid #e2e8f0",
+              borderRadius: "10px",
+              boxShadow: "0 10px 30px rgba(15,23,42,0.12)",
+              fontSize: "14px",
+              padding: "12px 14px",
+              maxWidth: "420px",
+            },
+            success: { iconTheme: { primary: "#15803d", secondary: "#ffffff" } },
+            error: { duration: 5000, iconTheme: { primary: "#dc2626", secondary: "#ffffff" } },
+          }}
+        />
       </body>
     </html>
   );
