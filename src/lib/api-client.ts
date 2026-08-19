@@ -178,6 +178,8 @@ export interface Document {
   file_size?: number;
   is_locked: boolean;
   is_deleted: boolean;
+  /** NEW until a workflow is started on it, then that workflow's status. */
+  status?: string | null;
 }
 
 export interface Folder {
@@ -1824,7 +1826,10 @@ export interface DocumentPageParams {
   size?: number;
   search?: string;
   folderId?: string | null;
+  /** Ask for every owner's documents. Honoured only for roles holding canViewAllDocuments. */
   all?: boolean;
+  /** e.g. 'NEW' for uploads no workflow has been started on yet. */
+  status?: string | null;
 }
 
 /** One page of documents, searched and filtered in the database. */
@@ -1835,10 +1840,60 @@ export async function getDocumentsPage(params: DocumentPageParams = {}): Promise
   if (params.all) query.set('all', 'true');
   if (params.search) query.set('search', params.search);
   if (params.folderId) query.set('folderId', params.folderId);
+  if (params.status) query.set('status', params.status);
 
   const response = await fetchWithAuth(`${API_BASE_URL}/documents/page?${query.toString()}`);
   if (!response.ok) {
     throw new Error(`Failed to load documents: ${response.status}`);
+  }
+  return response.json();
+}
+
+/** How many documents are waiting for a workflow to be started on them. */
+export async function getNewUploadCount(all = false): Promise<number> {
+  const response = await fetchWithAuth(
+    `${API_BASE_URL}/documents/new-count${all ? '?all=true' : ''}`
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to load new upload count: ${response.status}`);
+  }
+  const body = await response.json();
+  return Number(body?.count ?? 0);
+}
+
+export interface DeletedDocumentPageParams {
+  page?: number;
+  size?: number;
+  search?: string;
+}
+
+/** One page of the recycle bin, searched and scoped by the server. */
+export async function getDeletedDocumentsPage(
+  params: DeletedDocumentPageParams = {}
+): Promise<Page<Document>> {
+  const query = new URLSearchParams();
+  query.set('page', String(params.page ?? 0));
+  query.set('size', String(params.size ?? 10));
+  if (params.search) query.set('search', params.search);
+
+  const response = await fetchWithAuth(`${API_BASE_URL}/documents/trash/page?${query.toString()}`);
+  if (!response.ok) {
+    throw new Error(`Failed to load deleted documents: ${response.status}`);
+  }
+  return response.json();
+}
+
+export interface TrashSummary {
+  count: number;
+  totalBytes: number;
+  expiringSoon: number;
+}
+
+/** Recycle bin totals for the whole bin, not just the page on screen. */
+export async function getTrashSummary(): Promise<TrashSummary> {
+  const response = await fetchWithAuth(`${API_BASE_URL}/documents/trash/summary`);
+  if (!response.ok) {
+    throw new Error(`Failed to load trash summary: ${response.status}`);
   }
   return response.json();
 }

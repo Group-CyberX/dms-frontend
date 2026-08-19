@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
@@ -12,6 +12,9 @@ import {
   Folder as FolderIcon
 } from 'lucide-react';
 import {
+  getDeletedDocumentsPage,
+  getTrashSummary,
+  type TrashSummary,
   getDeletedDocuments,
   Document,
   restoreDocument,
@@ -25,13 +28,31 @@ import {
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/auth-store';
 import { hasPermission } from '@/lib/access-control';
+import { useConfirm } from '@/hooks/use-confirm';
+import PaginationBar from '@/components/ui/pagination-bar';
 
 export default function RecycleBinPage() {
+  const confirm = useConfirm();
   const router = useRouter();
-  const { userName, role, permissions } = useAuthStore();
+  const { role, permissions, accessToken } = useAuthStore();
   const [deletedDocuments, setDeletedDocuments] = useState<Document[]>([]);
-  const [filteredDocuments, setFilteredDocuments] = useState<Document[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+
+  // The bin is paged and searched by the server, so typing must not fire a
+  // request per keystroke.
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(10);
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalElements, setTotalElements] = useState(0);
+
+  // Counted across the whole bin by the database, not just the page on screen.
+  const [summary, setSummary] = useState<TrashSummary>({ count: 0, totalBytes: 0, expiringSoon: 0 });
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -40,46 +61,51 @@ export default function RecycleBinPage() {
   const [deletedFolders, setDeletedFolders] = useState<FolderTrashItem[]>([]);
   const [foldersLoading, setFoldersLoading] = useState(true);
 
+  // The session is stored under "accessToken"; nothing writes a plain "token",
+  // so reading that alone sent every user back to the login screen.
+  const signedIn = accessToken || (typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null);
+
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (!token) {
+    if (!signedIn) {
       router.push('/login');
       return;
     }
-
-    fetchDeletedDocuments();
     fetchDeletedFolders();
-  }, [router]);
+  }, [router, signedIn]);
 
-  useEffect(() => {
-    // Filter documents based on search query and current user
-    const filtered = deletedDocuments.filter(doc => {
-      // Only show documents deleted by the current user
-      if (userName && doc.owner_name !== userName) {
-        return false;
-      }
-      // Filter by search query
-      return doc.title.toLowerCase().includes(searchQuery.toLowerCase());
-    });
-    setFilteredDocuments(filtered);
-  }, [searchQuery, deletedDocuments, userName]);
-
-  const fetchDeletedDocuments = async () => {
+  const fetchDeletedDocuments = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await getDeletedDocuments();
-      console.log('Deleted documents fetched:', data);
-      console.log('Current userName from auth store:', userName);
-      setDeletedDocuments(Array.isArray(data) ? data : []);
+
+      // Which documents come back is the server's decision - the caller's own
+      // unless they hold canViewAllDeletedDocuments - and the page, the search
+      // and the totals are all resolved there too. Filtering by owner again
+      // here hid exactly the documents an administrator is meant to restore.
+      const [pageResult, summaryResult] = await Promise.all([
+        getDeletedDocumentsPage({ page, size: pageSize, search: debouncedSearch || undefined }),
+        getTrashSummary(),
+      ]);
+
+      setDeletedDocuments(pageResult.content ?? []);
+      setTotalPages(pageResult.totalPages ?? 0);
+      setTotalElements(pageResult.totalElements ?? 0);
+      setSummary(summaryResult);
       setError(null);
     } catch (err) {
       console.error('Failed to fetch deleted documents:', err);
       setError('Failed to load deleted documents');
       setDeletedDocuments([]);
+      setTotalPages(0);
+      setTotalElements(0);
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, pageSize, debouncedSearch]);
+
+  useEffect(() => {
+    if (!signedIn) return;
+    fetchDeletedDocuments();
+  }, [signedIn, fetchDeletedDocuments]);
 
   const fetchDeletedFolders = async () => {
     try {
@@ -115,30 +141,6 @@ export default function RecycleBinPage() {
     return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
   };
 
-  const getTotalSize = () => {
-    const totalBytes = getUserDeletedDocuments().reduce((sum, doc) => {
-      return sum + (doc.file_size || 0);
-    }, 0);
-    return formatFileSize(totalBytes);
-  };
-
-  const getUserDeletedDocuments = () => {
-    // If userName is not available, return all deleted documents
-    // (assuming backend already filters by current user)
-    if (!userName) {
-      console.log('userName is not set, returning all deleted documents:', deletedDocuments);
-      return deletedDocuments;
-    }
-    // Otherwise filter by owner_name
-    const userDocs = deletedDocuments.filter(doc => doc.owner_name === userName);
-    console.log('Filtering by userName:', userName, 'Found documents:', userDocs);
-    return userDocs;
-  };
-
-  const getExpiringCount = () => {
-    return getUserDeletedDocuments().filter(doc => isExpiringSoon(doc.deleted_at || doc.created_at)).length;
-  };
-
   const toggleSelectDocument = (documentId: string) => {
     const newSelected = new Set(selectedIds);
     if (newSelected.has(documentId)) {
@@ -150,19 +152,21 @@ export default function RecycleBinPage() {
   };
 
   const toggleSelectAll = () => {
-    if (selectedIds.size === filteredDocuments.length) {
+    if (selectedIds.size === deletedDocuments.length) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(filteredDocuments.map(doc => doc.document_id)));
+      setSelectedIds(new Set(deletedDocuments.map(doc => doc.document_id)));
     }
   };
 
   const handleRestoreSelected = async () => {
     if (selectedIds.size === 0) return;
 
-    const confirmed = window.confirm(
-      `Are you sure you want to restore ${selectedIds.size} document(s)?`
-    );
+    const confirmed = await confirm({
+      title: `Restore ${selectedIds.size} document(s)?`,
+      description: 'They go back to the folders they were deleted from.',
+      confirmLabel: 'Restore',
+    });
 
     if (!confirmed) return;
 
@@ -189,9 +193,12 @@ export default function RecycleBinPage() {
   const handlePermanentlyDeleteSelected = async () => {
     if (selectedIds.size === 0) return;
 
-    const confirmed = window.confirm(
-      `Are you sure you want to permanently delete ${selectedIds.size} document(s)? This action cannot be undone.`
-    );
+    const confirmed = await confirm({
+      title: `Permanently delete ${selectedIds.size} document(s)?`,
+      description: 'This erases them and every stored version. It cannot be undone.',
+      confirmLabel: 'Delete permanently',
+      tone: 'destructive',
+    });
 
     if (!confirmed) return;
 
@@ -216,7 +223,11 @@ export default function RecycleBinPage() {
   };
 
   const handleRestoreFolder = async (folderId: string, folderName: string) => {
-    const confirmed = window.confirm(`Restore "${folderName}" and everything inside it?`);
+    const confirmed = await confirm({
+      title: `Restore "${folderName}"?`,
+      description: 'The folder and every document inside it are restored together.',
+      confirmLabel: 'Restore folder',
+    });
     if (!confirmed) return;
 
     try {
@@ -240,7 +251,11 @@ export default function RecycleBinPage() {
   };
 
   const handleRestoreOne = async (documentId: string, documentTitle: string) => {
-    const confirmed = window.confirm(`Restore "${documentTitle}"?`);
+    const confirmed = await confirm({
+      title: `Restore "${documentTitle}"?`,
+      description: 'It goes back to the folder it was deleted from.',
+      confirmLabel: 'Restore',
+    });
     if (!confirmed) return;
 
     try {
@@ -263,9 +278,12 @@ export default function RecycleBinPage() {
   };
 
   const handlePermanentlyDeleteOne = async (documentId: string, documentTitle: string) => {
-    const confirmed = window.confirm(
-      `Permanently delete "${documentTitle}"? This action cannot be undone.`
-    );
+    const confirmed = await confirm({
+      title: `Permanently delete "${documentTitle}"?`,
+      description: 'This erases the document and every stored version. It cannot be undone.',
+      confirmLabel: 'Delete permanently',
+      tone: 'destructive',
+    });
     if (!confirmed) return;
 
     try {
@@ -342,7 +360,7 @@ export default function RecycleBinPage() {
                   <div>
                     <p className="text-gray-600 text-sm font-medium">Deleted Items</p>
                     <p className="text-3xl font-bold text-gray-900 mt-2">
-                      {getUserDeletedDocuments().length}
+                      {summary.count}
                     </p>
                   </div>
                   <div className="flex-shrink-0">
@@ -357,7 +375,7 @@ export default function RecycleBinPage() {
                   <div>
                     <p className="text-gray-600 text-sm font-medium">Expiring Soon</p>
                     <p className="text-3xl font-bold text-gray-900 mt-2">
-                      {getExpiringCount()}
+                      {summary.expiringSoon}
                     </p>
                   </div>
                   <div className="flex-shrink-0">
@@ -372,7 +390,7 @@ export default function RecycleBinPage() {
                   <div>
                     <p className="text-gray-600 text-sm font-medium">Total Size</p>
                     <p className="text-3xl font-bold text-gray-900 mt-2">
-                      {getTotalSize()}
+                      {formatFileSize(summary.totalBytes)}
                     </p>
                   </div>
                   <div className="flex-shrink-0">
@@ -526,7 +544,7 @@ export default function RecycleBinPage() {
             )}
 
             {/* Empty State */}
-            {!loading && !error && getUserDeletedDocuments().length === 0 && (
+            {!loading && !error && deletedDocuments.length === 0 && (
               <div className="text-center py-12">
                 <Trash2 className="w-16 h-16 text-gray-300 mx-auto mb-4" />
                 <p className="text-gray-600 font-medium">No deleted items</p>
@@ -535,7 +553,7 @@ export default function RecycleBinPage() {
             )}
 
             {/* Documents Table */}
-            {!loading && !error && getUserDeletedDocuments().length > 0 && (
+            {!loading && !error && deletedDocuments.length > 0 && (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="border-b border-gray-200 bg-gray-50">
@@ -543,7 +561,7 @@ export default function RecycleBinPage() {
                       <th className="text-left py-3 px-4 font-semibold text-gray-900 w-8">
                         <input
                           type="checkbox"
-                          checked={selectedIds.size === filteredDocuments.length && filteredDocuments.length > 0}
+                          checked={selectedIds.size === deletedDocuments.length && deletedDocuments.length > 0}
                           onChange={toggleSelectAll}
                           className="w-4 h-4 rounded cursor-pointer"
                         />
@@ -556,7 +574,7 @@ export default function RecycleBinPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredDocuments.map((doc) => {
+                    {deletedDocuments.map((doc) => {
                       const daysRemaining = calculateDaysRemaining(doc.deleted_at || doc.created_at);
                       const expiringSoon = isExpiringSoon(doc.deleted_at || doc.created_at);
                       
@@ -631,6 +649,17 @@ export default function RecycleBinPage() {
                     })}
                   </tbody>
                 </table>
+
+                <PaginationBar
+                  page={page}
+                  totalPages={totalPages}
+                  totalElements={totalElements}
+                  pageSize={pageSize}
+                  onPageChange={setPage}
+                  onPageSizeChange={(size) => { setPageSize(size); setPage(0); }}
+                  label="deleted documents"
+                  disabled={loading}
+                />
               </div>
             )}
           </div>

@@ -7,6 +7,8 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth-store';
 import { hasPermission } from '@/lib/access-control';
+import { useConfirm } from '@/hooks/use-confirm';
+import { notify } from '@/lib/feedback';
 import {
   getErpConnections, createErpConnection, deleteErpConnection, testErpConnection,
   syncErpConnection, getErpMappings, getErpTransactions, retryErpTransaction, getErpStats,
@@ -23,6 +25,7 @@ import {
  * parts of the requirements.
  */
 export default function ErpIntegrationPage() {
+  const confirm = useConfirm();
   const role = useAuthStore((s) => s.role);
   const permissions = useAuthStore((s) => s.permissions);
 
@@ -138,7 +141,12 @@ export default function ErpIntegrationPage() {
   };
 
   const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`Delete the connection "${name}" and its field mappings?`)) return;
+    if (!(await confirm({
+      title: `Delete the connection "${name}"?`,
+      description: 'Its field mappings go with it. Documents already linked through it keep their links.',
+      confirmLabel: 'Delete connection',
+      tone: 'destructive',
+    }))) return;
     try {
       await deleteErpConnection(id);
       if (selectedConnection === id) setSelectedConnection(null);

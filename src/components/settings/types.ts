@@ -23,6 +23,9 @@ export interface SettingsFormData {
   apiKey?: string;
   apiKeyLastRegenerated?: string;
 
+  // Personal security
+  twoFactorEnabled: boolean;
+
   // Admin - Document Policy
   defaultRetentionDays: string;
   recycleBinRetentionDays: string;

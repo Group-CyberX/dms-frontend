@@ -7,6 +7,7 @@ import AuditTable, { type AuditTableRef } from "@/components/ui/audit/audit-tabl
 import AuditRetention from "@/components/ui/audit/audit-retention";
 import PaginationBar from "@/components/ui/pagination-bar";
 import { auditService, type AuditFilters } from "@/lib/auditService";
+import { notify } from "@/lib/feedback";
 
 const NO_FILTERS: AuditFilters = {};
 
@@ -69,7 +70,7 @@ export default function AuditPage() {
             else tableRef.current?.exportToPDF?.(all);
         } catch (err) {
             console.error("Export failed:", err);
-            alert("Could not export the audit log.");
+            notify.error("Could not export the audit log. Try again in a moment.");
         }
     };
 

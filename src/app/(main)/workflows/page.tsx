@@ -8,6 +8,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { fetchWithAuth } from '@/lib/api-client';
 import { useAuthStore } from '@/store/auth-store';
 import { hasPermission } from '@/lib/access-control';
+import { notify } from '@/lib/feedback';
 
 //Represents an approver in the workflow
 interface Approver {
@@ -38,6 +39,9 @@ export default function WorkflowBuilderPage() {
     { id: '1', userId: '', username: '', role: '' }
   ]);
   const [availableApprovers, setAvailableApprovers] = useState<any[]>([]);
+  // What the last submit rejected, keyed by field. Each message is cleared as
+  // its own field is edited rather than only on the next submit.
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const [dueDate, setDueDate] = useState('');
   const [priority, setPriority] = useState('');
@@ -277,33 +281,36 @@ export default function WorkflowBuilderPage() {
 
   const handleSubmit = async () => {
 
-    // Basic validation
-    if (!selectedDocument || !workflowName || !description || !documentType || !priority || !dueDate) {
-      alert("Please fill all required fields");
-      return;
-    }
+    // Every problem is reported at once, against the field it belongs to.
+    const errors: Record<string, string> = {};
 
-    if (!workflowType) {
-      alert('Please select a workflow type');
-      return;
-    }
+    if (!selectedDocument) errors.selectedDocument = "Choose the document this workflow runs on.";
+    if (!workflowName) errors.workflowName = "Give the workflow a name.";
+    if (!description) errors.description = "Describe what this workflow is for.";
+    if (!documentType) errors.documentType = "Choose a document type.";
+    if (!priority) errors.priority = "Choose a priority.";
+    if (!dueDate) errors.dueDate = "Pick a due date.";
+    if (!workflowType) errors.workflowType = "Choose sequential or parallel.";
 
     if (!selectedTemplate && approvers.length === 0) {
-      alert("Add at least one approver");
-      return;
-    }
-
-    // Prevent duplicate approvers
-    const selectedApproverIds = approvers.map((a) => String(a.userId ?? "").trim()).filter(Boolean);
-    if (new Set(selectedApproverIds).size !== selectedApproverIds.length) {
-      alert('Each step must have a unique approver. Please remove duplicates.');
-      return;
+      errors.approvers = "Add at least one approver.";
+    } else {
+      const selectedApproverIds = approvers.map((a) => String(a.userId ?? "").trim()).filter(Boolean);
+      if (new Set(selectedApproverIds).size !== selectedApproverIds.length) {
+        errors.approvers = "Each step needs a different approver.";
+      }
     }
 
     if (saveAsTemplate && !templateName.trim()) {
-      alert("Please enter a template name");
+      errors.templateName = "Name the template you are saving.";
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
       return;
     }
+
+    setFieldErrors({});
     // Prepare request payload
     const payload = {
       documentId: selectedDocument,
@@ -336,12 +343,12 @@ export default function WorkflowBuilderPage() {
         throw new Error(data?.message ?? `Workflow creation failed: ${response.status}`);
       }
 
-      alert('Workflow created successfully');
+      notify.success('Workflow created.');
       console.log("Workflow created:", data);
 
     } catch (error) {
       console.error("Error creating workflow:", error);
-      alert(error instanceof Error ? error.message : 'Workflow creation failed');
+      notify.error(error instanceof Error ? error.message : "Could not create the workflow. Try again in a moment.");
     }
   };
 
@@ -379,6 +386,7 @@ export default function WorkflowBuilderPage() {
                       const value = e.target.value;
                       setSelectedDocument(value);
                       setDocumentType(getDocumentTypeForDocument(value));
+                      if (fieldErrors.selectedDocument) setFieldErrors((prev) => ({ ...prev, selectedDocument: "" }));
                     }}
                     required
                     className="w-full h-9 px-3 py-2 border border-input rounded-md bg-transparent text-sm shadow-xs focus:outline-none focus:ring-[3px] focus:ring-ring/50 focus:border-ring"
@@ -390,6 +398,9 @@ export default function WorkflowBuilderPage() {
                       </option>
                     ))}
                   </select>
+                  {fieldErrors.selectedDocument && (
+                    <p className="mt-1.5 text-sm text-red-600">{fieldErrors.selectedDocument}</p>
+                  )}
                 </div>
 
                 {/* Workflow Template */}
@@ -419,10 +430,16 @@ export default function WorkflowBuilderPage() {
                   <Input
                     type="text"
                     value={workflowName}
-                    onChange={(e) => setWorkflowName(e.target.value)}
+                    onChange={(e) => {
+                      setWorkflowName(e.target.value);
+                      if (fieldErrors.workflowName) setFieldErrors((prev) => ({ ...prev, workflowName: "" }));
+                    }}
                     placeholder="Enter workflow name"
                     required
                   />
+                  {fieldErrors.workflowName && (
+                    <p className="mt-1.5 text-sm text-red-600">{fieldErrors.workflowName}</p>
+                  )}
                 </div>
 
                 {/* Description */}
@@ -433,12 +450,18 @@ export default function WorkflowBuilderPage() {
                   <textarea
                     placeholder="Describe the workflow purpose and when it applies"
                     value={description}
-                    onChange={(e) => setDescription(e.target.value)}
+                    onChange={(e) => {
+                      setDescription(e.target.value);
+                      if (fieldErrors.description) setFieldErrors((prev) => ({ ...prev, description: "" }));
+                    }}
                     rows={3}
                     disabled={isTemplateLocked}
                     required
                     className="w-full px-3 py-2 border border-input rounded-md bg-transparent text-sm shadow-xs focus:outline-none focus:ring-[3px] focus:ring-ring/50 focus:border-ring"
                     />
+                  {fieldErrors.description && (
+                    <p className="mt-1.5 text-sm text-red-600">{fieldErrors.description}</p>
+                  )}
                 </div>
 
                 <div>
@@ -448,7 +471,10 @@ export default function WorkflowBuilderPage() {
                   <div className="relative">
                     <select
                       value={documentType}
-                      onChange={(e) => setDocumentType(e.target.value)}
+                      onChange={(e) => {
+                        setDocumentType(e.target.value);
+                        if (fieldErrors.documentType) setFieldErrors((prev) => ({ ...prev, documentType: "" }));
+                      }}
                       disabled={isTemplateLocked}
                       required
                       className="w-full h-9 px-3 py-2 border border-input rounded-md bg-transparent text-sm shadow-xs focus:outline-none focus:ring-[3px] focus:ring-ring/50 focus:border-ring appearance-none"
@@ -462,6 +488,9 @@ export default function WorkflowBuilderPage() {
                     </select>
                     <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
                   </div>
+                  {fieldErrors.documentType && (
+                    <p className="mt-1.5 text-sm text-red-600">{fieldErrors.documentType}</p>
+                  )}
               </div>
 
                 {/* Workflow Type */}
@@ -470,7 +499,10 @@ export default function WorkflowBuilderPage() {
                   <div className="relative w-48">
                     <select
                       value={workflowType}
-                      onChange={(e) => setWorkflowType(e.target.value as 'SEQUENTIAL' | 'PARALLEL' | '')}
+                      onChange={(e) => {
+                        setWorkflowType(e.target.value as 'SEQUENTIAL' | 'PARALLEL' | '');
+                        if (fieldErrors.workflowType) setFieldErrors((prev) => ({ ...prev, workflowType: "" }));
+                      }}
                       disabled={isTemplateLocked}
                       required
                       className="w-full h-9 px-3 py-2 border border-input rounded-md bg-transparent text-sm shadow-xs focus:outline-none focus:ring-[3px] focus:ring-ring/50 focus:border-ring appearance-none"
@@ -483,6 +515,9 @@ export default function WorkflowBuilderPage() {
                     </select>
                     <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
                   </div>
+                  {fieldErrors.workflowType && (
+                    <p className="mt-1.5 text-sm text-red-600">{fieldErrors.workflowType}</p>
+                  )}
                 </div>
             
 
@@ -504,6 +539,10 @@ export default function WorkflowBuilderPage() {
                       Add Approver
                     </Button>
                   </div>
+
+                  {fieldErrors.approvers && (
+                    <p className="mb-2 text-sm text-red-600">{fieldErrors.approvers}</p>
+                  )}
 
                   <div className="space-y-3">
                     {approvers.map((approver, index) => (
@@ -569,12 +608,18 @@ export default function WorkflowBuilderPage() {
                     <Input
                       type="date"
                       value={dueDate}
-                      onChange={(e) => setDueDate(e.target.value)}
+                      onChange={(e) => {
+                        setDueDate(e.target.value);
+                        if (fieldErrors.dueDate) setFieldErrors((prev) => ({ ...prev, dueDate: "" }));
+                      }}
                       min={new Date().toISOString().split("T")[0]}
                       required
                       className="pr-10"
                     />
                   </div>
+                  {fieldErrors.dueDate && (
+                    <p className="mt-1.5 text-sm text-red-600">{fieldErrors.dueDate}</p>
+                  )}
                 </div>
 
                 {/* Priority */}
@@ -584,7 +629,10 @@ export default function WorkflowBuilderPage() {
                   </label>
                   <select
                     value={priority}
-                    onChange={(e) => setPriority(e.target.value)}
+                    onChange={(e) => {
+                      setPriority(e.target.value);
+                      if (fieldErrors.priority) setFieldErrors((prev) => ({ ...prev, priority: "" }));
+                    }}
                     required
                     className="w-full h-9 px-3 py-2 border border-input rounded-md bg-transparent text-sm shadow-xs focus:outline-none focus:ring-[3px] focus:ring-ring/50 focus:border-ring"
                   >
@@ -594,6 +642,9 @@ export default function WorkflowBuilderPage() {
                     <option value="HIGH">High</option>
                     <option value="URGENT">Urgent</option>
                   </select>
+                  {fieldErrors.priority && (
+                    <p className="mt-1.5 text-sm text-red-600">{fieldErrors.priority}</p>
+                  )}
                 </div>
 
                 {/* Digital signature requirement */}
@@ -636,8 +687,14 @@ export default function WorkflowBuilderPage() {
                         className="w-full h-9 px-3 py-2 border border-input rounded-md bg-transparent text-sm shadow-xs focus:outline-none focus:ring-[3px] focus:ring-ring/50 focus:border-ring"
                         placeholder="Template Name"
                         value={templateName}
-                        onChange={(e) => setTemplateName(e.target.value)}
+                        onChange={(e) => {
+                          setTemplateName(e.target.value);
+                          if (fieldErrors.templateName) setFieldErrors((prev) => ({ ...prev, templateName: "" }));
+                        }}
                       />
+                    )}
+                    {saveAsTemplate && fieldErrors.templateName && (
+                      <p className="mt-1.5 text-sm text-red-600">{fieldErrors.templateName}</p>
                     )}
                   </>
                 )}

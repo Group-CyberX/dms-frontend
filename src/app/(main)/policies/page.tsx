@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button';
 import CreateWorkflowTemplateDialog from '@/components/ui/workflow/create-workflow-template-dialog';
 import { useAuthStore } from '@/store/auth-store';
 import { hasPermission } from '@/lib/access-control';
+import { useConfirm } from '@/hooks/use-confirm';
+import { notify } from '@/lib/feedback';
 import {
   MetadataTab,
   RetentionTab,
@@ -60,6 +62,7 @@ type TemplateRow = {
 };
 
 export default function PoliciesPage() {
+  const confirm = useConfirm();
   const role = useAuthStore((state) => state.role);
   const permissions = useAuthStore((state) => state.permissions);
 
@@ -252,9 +255,12 @@ export default function PoliciesPage() {
   // Delete template
   const handleDelete = async (templateId: number) => {
     const template = templates.find((item) => item.id === templateId);
-    const confirmed = window.confirm(
-      `Delete workflow template "${template?.name ?? 'this template'}"? This will also remove its steps.`
-    );
+    const confirmed = await confirm({
+      title: `Delete workflow template "${template?.name ?? 'this template'}"?`,
+      description: 'Its steps go with it. Workflows already running on this template are not affected.',
+      confirmLabel: 'Delete template',
+      tone: 'destructive',
+    });
 
     if (!confirmed) {
       return;
@@ -272,7 +278,7 @@ export default function PoliciesPage() {
       await loadData();
     } catch (err) {
       console.error(err);
-      alert('Failed to delete workflow template');
+      notify.error("Couldn't delete that template. Try again in a moment.");
     }
   };
 

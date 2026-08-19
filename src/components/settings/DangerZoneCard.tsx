@@ -1,17 +1,32 @@
+"use client";
+
 import React from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useConfirm } from "@/hooks/use-confirm";
 
 export default function DangerZoneCard() {
-  const handleClearCache = () => {
-    if (window.confirm("Are you sure you want to clear the system cache?")) {
+  const confirm = useConfirm();
+
+  const handleClearCache = async () => {
+    if (await confirm({
+      title: "Clear the system cache?",
+      description: "Cached data is rebuilt on demand, so the first request after this will be slower.",
+      confirmLabel: "Clear cache",
+      tone: "destructive",
+    })) {
       console.log("System cache cleared.");
     }
   };
 
-  const handleResetSettings = () => {
-    if (window.confirm("Are you sure you want to restore the system to default configuration? This action cannot be undone.")) {
+  const handleResetSettings = async () => {
+    if (await confirm({
+      title: "Restore default configuration?",
+      description: "Every system setting returns to its shipped value. This cannot be undone.",
+      confirmLabel: "Reset settings",
+      tone: "destructive",
+    })) {
       console.log("System settings reset.");
     }
   };

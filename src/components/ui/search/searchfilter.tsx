@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/select"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { fetchWithAuth } from "@/lib/api-client"
+import { notify } from "@/lib/feedback"
 
 export interface SearchFiltersRef {
   getFilters: () => AdvancedSearchFilters;
@@ -166,6 +167,7 @@ export const SearchFilters = React.forwardRef<SearchFiltersRef, {
   initialQuery?: string
 }>(({ onSearch, initialQuery = "" }, ref) => {
   const [query, setQuery] = React.useState(initialQuery)
+  const [queryError, setQueryError] = React.useState<string | null>(null)
   const [documentType, setDocumentType] = React.useState("")
   const [status, setStatus] = React.useState("")
   const [owner, setOwner] = React.useState("")
@@ -243,9 +245,11 @@ export const SearchFilters = React.forwardRef<SearchFiltersRef, {
 
   const handleSearch = async () => {
     if (!query.trim()) {
-      alert("Please enter a search query")
+      setQueryError("Enter a word or phrase to search for.")
       return
     }
+
+    setQueryError(null)
 
     setIsLoading(true)
     try {
@@ -264,7 +268,7 @@ export const SearchFilters = React.forwardRef<SearchFiltersRef, {
       }
     } catch (error) {
       console.error("Search error:", error)
-      alert("Failed to perform search")
+      notify.error("The search could not be run. Try again in a moment.")
     } finally {
       setIsLoading(false)
     }
@@ -272,6 +276,7 @@ export const SearchFilters = React.forwardRef<SearchFiltersRef, {
 
   const handleClear = () => {
     setQuery("")
+    setQueryError(null)
     setDocumentType("")
     setStatus("")
     setOwner("")
@@ -301,10 +306,17 @@ export const SearchFilters = React.forwardRef<SearchFiltersRef, {
               placeholder="Enter keywords, document content, or metadata..." 
               className="pl-10 h-10 bg-white"
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => {
+                setQuery(e.target.value)
+                if (queryError) setQueryError(null)
+              }}
               onKeyPress={(e) => e.key === "Enter" && handleSearch()}
+              aria-invalid={queryError ? true : undefined}
             />
           </div>
+          {queryError && (
+            <p className="mt-1.5 text-sm text-red-600">{queryError}</p>
+          )}
         </div>
 
         {/* Filters Grid */}
