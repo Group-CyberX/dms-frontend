@@ -221,7 +221,7 @@ export default function ErpIntegrationPage() {
                 ERP type
                 <select value={form.erpType} onChange={(e) => setForm({ ...form, erpType: e.target.value })}
                         className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
-                  {['GENERIC', 'SAP', 'ORACLE', 'DYNAMICS', 'INFOR', 'EPICOR'].map((t) => (
+                  {['GENERIC', 'NEXUS', 'SAP', 'ORACLE', 'DYNAMICS', 'INFOR', 'EPICOR'].map((t) => (
                     <option key={t} value={t}>{t}</option>
                   ))}
                 </select>
@@ -231,7 +231,9 @@ export default function ErpIntegrationPage() {
                 <input value={form.apiEndpoint} onChange={(e) => setForm({ ...form, apiEndpoint: e.target.value })}
                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 font-mono text-sm" />
                 <span className="mt-1 block text-[11px] font-normal text-gray-400">
-                  Defaults to the bundled mock ERP. Point it at a real system and nothing else changes.
+                  Defaults to the bundled mock ERP. Select ERP type "NEXUS" when pointing this at the
+                  standalone Nexus ERP backend (localhost:8082/api/erp) so the seeded field mapping
+                  matches its actual field names.
                 </span>
               </label>
               <label className="text-xs font-medium text-gray-600">
