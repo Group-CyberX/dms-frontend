@@ -6,6 +6,7 @@ import Link from "next/link";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import NavigationSideBar from "@/components/NavigationItem/NavigationSideBar";
 import { formatRoleLabel, canAccessPath } from "@/lib/access-control";
+import { ConfirmProvider } from "@/hooks/use-confirm";
 import { useAuthStore, setupCrossWindowLogoutDetection } from "@/store/auth-store";
 import { notificationService } from "@/lib/notificationServices";
 import { apiClient } from "@/lib/api-client";
@@ -161,9 +162,10 @@ export default function MainLayout({
     const fetchProfile = async () => {
       try {
         const data = await apiClient.get("/api/profile");
-        if (data && data.profilePicture) {
-          setProfilePicture(data.profilePicture);
-        }
+        // Assigned even when the account has no picture: only setting it when
+        // one came back meant an account without a photo kept whichever photo
+        // was already in the store.
+        setProfilePicture(data?.profilePicture ?? null);
       } catch (err) {
         console.error("Failed to fetch profile picture", err);
       }
@@ -242,6 +244,7 @@ export default function MainLayout({
 
 
   return (
+    <ConfirmProvider>
     <SidebarProvider>
       <div className="flex h-screen w-full bg-[#ececec]">
         <NavigationSideBar />
@@ -501,5 +504,6 @@ export default function MainLayout({
         </div>
       </div>
     </SidebarProvider>
+    </ConfirmProvider>
   );
 }

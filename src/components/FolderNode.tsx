@@ -22,6 +22,8 @@ interface FolderNodeProps {
   onRenameFolder: (id: string, newName: string) => Promise<void>;
   /** When this matches node.folder_id, force-expand (e.g. a child was just created inside it). */
   forceOpenId?: string | null;
+  /** Deleting a folder takes its documents with it, so it is offered only to roles holding canDeleteFolder. */
+  canDelete?: boolean;
 }
 
 export function FolderNode({
@@ -33,6 +35,7 @@ export function FolderNode({
   onRequestDelete,
   onRenameFolder,
   forceOpenId,
+  canDelete = false,
 }: FolderNodeProps) {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -196,17 +199,21 @@ export function FolderNode({
             <Pencil size={14} />
             Rename
           </ContextMenuItem>
-          <ContextMenuSeparator />
-          <ContextMenuItem
-            onClick={(e) => {
-              e.stopPropagation();
-              onRequestDelete(node.folder_id);
-            }}
-            className="gap-2 text-sm text-red-600 focus:text-red-600"
-          >
-            <Trash2 size={14} />
-            Delete
-          </ContextMenuItem>
+          {canDelete && (
+            <>
+              <ContextMenuSeparator />
+              <ContextMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRequestDelete(node.folder_id);
+                }}
+                className="gap-2 text-sm text-red-600 focus:text-red-600"
+              >
+                <Trash2 size={14} />
+                Delete
+              </ContextMenuItem>
+            </>
+          )}
         </ContextMenuContent>
       </ContextMenu>
 
@@ -250,6 +257,7 @@ export function FolderNode({
               onRequestDelete={onRequestDelete}
               onRenameFolder={onRenameFolder}
               forceOpenId={forceOpenId}
+              canDelete={canDelete}
             />
           ))}
         </div>

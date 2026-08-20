@@ -11,6 +11,8 @@ import { DocumentPreview } from '@/components/ui/DocumentPreview';
 import { useAuthStore } from '@/store/auth-store';
 import { hasPermission } from '@/lib/access-control';
 import { useDocumentLock } from '@/hooks/use-document-lock';
+import { useConfirm } from '@/hooks/use-confirm';
+import { notify } from '@/lib/feedback';
 import { unlockDocument, getDocumentErpLinks, getTaskContext, type ErpDocumentLink } from '@/lib/api-client';
 import {
   ArrowLeft,
@@ -29,6 +31,7 @@ import {
 } from 'lucide-react';
 
 export default function DocumentDetailPage() {
+  const confirm = useConfirm();
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -66,7 +69,7 @@ export default function DocumentDetailPage() {
       await unlockDocument(documentId);
       await lock.refresh();
     } catch {
-      alert('Could not release the lock.');
+      notify.error('Could not release the lock. Try again in a moment.');
     }
   };
 
@@ -348,7 +351,7 @@ export default function DocumentDetailPage() {
       setMetadata(updatedMeta || []);
     } catch (err) {
       console.error('Error adding metadata:', err);
-      alert('Failed to add metadata');
+      notify.error("Couldn't save that field. Check your connection and try again.");
     }
   };
 
@@ -360,19 +363,24 @@ export default function DocumentDetailPage() {
       setMetadata(updatedMeta || []);
     } catch (err) {
       console.error('Error updating metadata:', err);
-      alert('Failed to update metadata');
+      notify.error("Couldn't update that field. Check your connection and try again.");
     }
   };
 
   const handleDeleteMeta = async (key: string) => {
-    if (!confirm('Are you sure you want to delete this metadata?')) return;
+    if (!(await confirm({
+      title: 'Delete this metadata field?',
+      description: 'It is removed from this document. Other documents are unaffected.',
+      confirmLabel: 'Delete field',
+      tone: 'destructive',
+    }))) return;
     try {
       await deleteMetadata(documentId, key);
       const updatedMeta = await getDocumentMetadata(documentId);
       setMetadata(updatedMeta || []);
     } catch (err) {
       console.error('Error deleting metadata:', err);
-      alert('Failed to delete metadata');
+      notify.error("Couldn't delete that field. Try again in a moment.");
     }
   };
 
@@ -389,7 +397,7 @@ export default function DocumentDetailPage() {
       setNewTagInput('');
     } catch (err) {
       console.error('Error adding tag:', err);
-      alert(err instanceof Error ? err.message : 'Failed to add tag');
+      notify.error(err instanceof Error ? err.message : "Couldn't add that tag.");
     } finally {
       setAddingTag(false);
     }
@@ -451,7 +459,7 @@ export default function DocumentDetailPage() {
       globalThis.document.body.removeChild(a);
     } catch (err) {
       console.error('Error downloading version:', err);
-      alert(err instanceof Error ? err.message : 'Failed to download version');
+      notify.error(err instanceof Error ? err.message : "Couldn't download that version.");
     } finally {
       setDownloadingVersionId(null);
     }
@@ -466,10 +474,10 @@ export default function DocumentDetailPage() {
       setRestoringVersionId(versionId);
       await restoreDocumentVersion(document.document_id, versionId);
       setDocument({ ...document, current_version_id: versionId });
-      alert('Version restored successfully');
+      notify.success('Version restored.');
     } catch (err) {
       console.error('Error restoring version:', err);
-      alert(err instanceof Error ? err.message : 'Failed to restore version');
+      notify.error(err instanceof Error ? err.message : "Couldn't restore that version.");
     } finally {
       setRestoringVersionId(null);
     }

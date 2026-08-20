@@ -40,6 +40,7 @@ export default function SettingsPage() {
     maxVersionsPerDocument: 10,
     mandatoryClassification: false,
     twoFactorAuth: false,
+    twoFactorEnabled: false,
     sessionTimeout: "30 Minutes",
     passwordPolicy: "Strong (8+ chars, mixed, numbers, symbols)",
     passwordExpiry: "90 Days",
@@ -151,7 +152,8 @@ export default function SettingsPage() {
         language: formData.language,
         timezone: formData.timezone,
         dateFormat: formData.dateFormat,
-        theme: formData.theme
+        theme: formData.theme,
+        twoFactorEnabled: formData.twoFactorEnabled
       })
       saved.push('preferences')
 
@@ -165,7 +167,8 @@ export default function SettingsPage() {
           sessionTimeout: formData.sessionTimeout,
           passwordPolicy: formData.passwordPolicy,
           passwordExpiry: formData.passwordExpiry,
-          allowedFileTypes: formData.allowedFileTypes
+          allowedFileTypes: formData.allowedFileTypes,
+          twoFactorAuth: formData.twoFactorAuth
         })
         saved.push('system configuration')
       }

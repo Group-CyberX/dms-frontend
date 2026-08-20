@@ -4,14 +4,19 @@ import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { UploadDocumentDialog } from '@/components/ui/upload-document-dialog';
+import { useConfirm } from '@/hooks/use-confirm';
+import PaginationBar from '@/components/ui/pagination-bar';
+import { notify } from '@/lib/feedback';
 import ShareDocumentDialog from '@/components/ui/share/share-document-dialog';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import {
-  Plus, Eye, Download, Edit2, FileText, Loader, Trash2, Share2, MoveRight,
+  Plus, Eye, Download, FileText, Loader, Trash2, Share2, MoveRight,
   LayoutGrid, List, MoreHorizontal, Lock,
 } from 'lucide-react';
 import {
   getDocuments,
+  getDocumentsPage,
+  getNewUploadCount,
   getFolders,
   Document,
   Folder,
@@ -263,9 +268,6 @@ function DocCard({ doc, selected, status, onToggle, onView, onDelete, onMove, on
               <Eye size={12} /> View
             </DropdownMenuItem>
             <DropdownMenuItem className="gap-2 text-xs">
-              <Edit2 size={12} /> Edit
-            </DropdownMenuItem>
-            <DropdownMenuItem className="gap-2 text-xs">
               <Download size={12} /> Download
             </DropdownMenuItem>
             <DropdownMenuItem className="gap-2 text-xs" onClick={onMove}>
@@ -317,6 +319,7 @@ function DocCard({ doc, selected, status, onToggle, onView, onDelete, onMove, on
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function DocumentsPage() {
+  const confirm = useConfirm();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -334,6 +337,28 @@ export default function DocumentsPage() {
   const [docWorkflowStatus, setDocWorkflowStatus] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // The list is paged, searched and filtered by the database. Typing must not
+  // fire a request per keystroke.
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(10);
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalElements, setTotalElements] = useState(0);
+
+  // Documents uploaded by anyone, for the roles allowed to see them. Without
+  // this an end user's upload was visible only to the person who uploaded it,
+  // so nobody with authority ever saw it.
+  const canSeeEveryonesDocuments = hasPermission(permissions, role, 'canViewAllDocuments');
+
+  // Restricts the list to uploads no workflow has been started on yet.
+  const [showNewOnly, setShowNewOnly] = useState(false);
+  const [newCount, setNewCount] = useState(0);
 
   // Incrementing this tells FolderSidebar to reload its own data
   const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
@@ -360,17 +385,33 @@ export default function DocumentsPage() {
     if (!silent) setLoading(true);
     setError(null);
 
-    const [docsResult, workflowsResult] = await Promise.allSettled([
-      getDocuments(),
+    const [docsResult, workflowsResult, newCountResult] = await Promise.allSettled([
+      getDocumentsPage({
+        page,
+        size: pageSize,
+        search: debouncedSearch || undefined,
+        folderId: selectedFolderId,
+        all: canSeeEveryonesDocuments,
+        status: showNewOnly ? 'NEW' : undefined,
+      }),
       getWorkflowStatusByDocument(),
+      canSeeEveryonesDocuments ? getNewUploadCount(true) : Promise.resolve(0),
     ]);
 
     if (docsResult.status === 'fulfilled') {
-      setDocuments(Array.isArray(docsResult.value) ? docsResult.value : []);
+      setDocuments(docsResult.value.content ?? []);
+      setTotalPages(docsResult.value.totalPages ?? 0);
+      setTotalElements(docsResult.value.totalElements ?? 0);
     } else {
       console.error('Failed to fetch documents:', docsResult.reason);
       setError('Failed to load documents');
       setDocuments([]);
+      setTotalPages(0);
+      setTotalElements(0);
+    }
+
+    if (newCountResult.status === 'fulfilled') {
+      setNewCount(Number(newCountResult.value ?? 0));
     }
 
     if (workflowsResult.status === 'fulfilled') {
@@ -390,11 +431,13 @@ export default function DocumentsPage() {
     }
 
     if (!silent) setLoading(false);
-  }, []);
+  }, [page, pageSize, debouncedSearch, selectedFolderId, canSeeEveryonesDocuments, showNewOnly]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
   useEffect(() => { setSelectedDocIds(new Set()); }, [selectedFolderId]);
+
+  useEffect(() => { setPage(0); }, [debouncedSearch, selectedFolderId, showNewOnly, pageSize]);
 
   const handleSelectFolder = useCallback(
     (id: string | null) => {
@@ -407,7 +450,12 @@ export default function DocumentsPage() {
   );
 
   const handleDelete = async (documentId: string, documentTitle: string) => {
-    if (!window.confirm(`Delete "${documentTitle}"? This cannot be undone.`)) return;
+    if (!(await confirm({
+      title: `Delete "${documentTitle}"?`,
+      description: 'It moves to the recycle bin, where it can be restored for 30 days.',
+      confirmLabel: 'Delete',
+      tone: 'destructive',
+    }))) return;
     try {
       await deleteDocument(documentId);
       // Optimistic: remove immediately from local state
@@ -416,8 +464,10 @@ export default function DocumentsPage() {
       // Refresh sidebar counts
       setSidebarRefreshKey((k) => k + 1);
     } catch (err) {
+      // Reported as a toast rather than the page's error state: one failed
+      // delete should not replace the whole list with an error screen.
       console.error('Failed to delete:', err);
-      setError('Failed to delete document');
+      notify.error(err instanceof Error ? err.message : 'Could not delete that document.');
     }
   };
 
@@ -467,12 +517,10 @@ export default function DocumentsPage() {
     else setSelectedDocIds(new Set(filteredDocuments.map((d) => d.document_id)));
   };
 
-  const filteredDocuments = documents.filter((doc) => {
-    if (doc.is_deleted) return false;
-    if (selectedFolderId !== null && doc.folder_id !== selectedFolderId) return false;
-    if (searchQuery && !doc.title.toLowerCase().includes(searchQuery.toLowerCase())) return false;
-    return true;
-  });
+  // The folder, the search and the status were all applied by the database, and
+  // only this page was sent, so there is nothing left to filter here. Filtering
+  // again would only hide rows the server deliberately returned.
+  const filteredDocuments = documents;
 
   const getStatus = (docId: string) => docWorkflowStatus[String(docId ?? '')] ?? '';
 
@@ -486,6 +534,7 @@ export default function DocumentsPage() {
         onSelectFolder={handleSelectFolder}
         refreshKey={sidebarRefreshKey}
         onDocumentsChanged={() => fetchData(true)}
+        allOwners={canSeeEveryonesDocuments}
       />
 
       {/* Main content */}
@@ -537,8 +586,33 @@ export default function DocumentsPage() {
                   />
                 )}
                 <span className="text-sm font-medium text-gray-500">
-                  {filteredDocuments.length} document{filteredDocuments.length !== 1 ? 's' : ''}
+                  {totalElements} document{totalElements !== 1 ? 's' : ''}
                 </span>
+
+                {/* Uploads nobody has started a workflow on yet. Only offered to
+                    roles that can act on other people's documents. */}
+                {canSeeEveryonesDocuments && (
+                  <button
+                    type="button"
+                    onClick={() => setShowNewOnly((on) => !on)}
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition ${
+                      showNewOnly
+                        ? 'border-[#8B2E00] bg-[#8B2E00] text-white'
+                        : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    New uploads
+                    {newCount > 0 && (
+                      <span
+                        className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
+                          showNewOnly ? 'bg-white/20 text-white' : 'bg-[#f7ede8] text-[#8B2E00]'
+                        }`}
+                      >
+                        {newCount}
+                      </span>
+                    )}
+                  </button>
+                )}
               </div>
 
               <div className="flex items-center gap-2">
@@ -674,9 +748,6 @@ export default function DocumentsPage() {
                         <td className="py-3 px-4">
                           <div className="flex items-center gap-0.5">
                             <button onClick={() => router.push(`/documents/${doc.document_id}`)} className="p-1.5 hover:bg-gray-100 rounded transition" title="View"><Eye className="w-3.5 h-3.5 text-gray-400" /></button>
-                            {hasPermission(permissions, role, "canEditDocument") && (
-                              <button className="p-1.5 hover:bg-gray-100 rounded transition" title="Edit"><Edit2 className="w-3.5 h-3.5 text-gray-400" /></button>
-                            )}
                             <button className="p-1.5 hover:bg-gray-100 rounded transition" title="Download"><Download className="w-3.5 h-3.5 text-gray-400" /></button>
                             {hasPermission(permissions, role, "canEditDocument") && (
                               <button onClick={(e) => { e.stopPropagation(); openMoveSheet(doc.document_id); }} className="p-1.5 hover:bg-blue-50 rounded transition" title="Move"><MoveRight className="w-3.5 h-3.5 text-blue-400" /></button>
@@ -712,6 +783,21 @@ export default function DocumentsPage() {
                     onShare={() => setShareTarget({ id: doc.document_id, title: doc.title })}
                   />
                 ))}
+              </div>
+            )}
+
+            {!loading && !error && (
+              <div className="px-5 pb-4">
+                <PaginationBar
+                  page={page}
+                  totalPages={totalPages}
+                  totalElements={totalElements}
+                  pageSize={pageSize}
+                  onPageChange={setPage}
+                  onPageSizeChange={setPageSize}
+                  label="documents"
+                  disabled={loading}
+                />
               </div>
             )}
           </div>

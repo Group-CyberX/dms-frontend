@@ -14,6 +14,7 @@ import {
 import { Plus, Users, Save, Loader, Trash2 } from "lucide-react";
 import { CreateRoleDialog } from "../../../components/role-mgt/CreateRoleDialog";
 import { useAuthStore } from "@/store/auth-store";
+import { useConfirm } from "@/hooks/use-confirm";
 import {
   PERMISSION_CATALOG,
   PERMISSION_KEYS,
@@ -59,6 +60,7 @@ function PermissionCheckbox({
 }
 
 export default function RoleManagementPage() {
+  const confirm = useConfirm();
   const [roles, setRoles] = useState<Role[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
@@ -191,7 +193,12 @@ export default function RoleManagementPage() {
       return;
     }
 
-    if (!window.confirm(`Are you sure you want to delete the ${selectedRole.name} role? This cannot be undone.`)) {
+    if (!(await confirm({
+      title: `Delete the ${selectedRole.name} role?`,
+      description: "Anyone still assigned to it will lose the access it granted. This cannot be undone.",
+      confirmLabel: "Delete role",
+      tone: "destructive",
+    }))) {
       return;
     }
 

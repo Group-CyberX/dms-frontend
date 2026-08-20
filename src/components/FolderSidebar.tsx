@@ -23,6 +23,8 @@ import {
   FolderTreeNode,
 } from "@/lib/api-client";
 import { FolderNode } from "@/components/FolderNode";
+import { useAuthStore } from "@/store/auth-store";
+import { hasPermission } from "@/lib/access-control";
 
 interface FolderSidebarProps {
   selectedFolderId: string | null;
@@ -31,6 +33,11 @@ interface FolderSidebarProps {
   refreshKey?: number;
   /** Called after a folder delete moves documents to the recycle bin, so the parent can refresh its own document list */
   onDocumentsChanged?: () => void;
+  /**
+   * Whose documents the counts describe. Must match the scope of the list
+   * rendered beside them, or a folder badge contradicts the list.
+   */
+  allOwners?: boolean;
 }
 
 export function FolderSidebar({
@@ -38,7 +45,15 @@ export function FolderSidebar({
   onSelectFolder,
   refreshKey = 0,
   onDocumentsChanged,
+  allOwners = false,
 }: FolderSidebarProps) {
+  // Deleting a folder soft-deletes every document inside it, whoever owns
+  // them, so it is gated on its own permission rather than on being able to
+  // delete a single document.
+  const role = useAuthStore((state) => state.role);
+  const permissions = useAuthStore((state) => state.permissions);
+  const canDeleteFolder = hasPermission(permissions, role, "canDeleteFolder");
+
   const [tree, setTree] = useState<FolderTreeNode[]>([]);
   const [allDocCount, setAllDocCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -93,14 +108,12 @@ export function FolderSidebar({
       // per folder - comes from the backend rather than being recomputed here.
       //
       // The counts are deliberately left at the default scope, "my documents",
-      // because that is what the list next to them shows (getDocuments() sends
-      // no `all` flag). Asking for one scope here and rendering the other
-      // beside it is what made a folder claim 26 files against a list of 3.
-      // If that list is ever switched to show everyone's documents, this call
-      // has to be given `true` in the same change.
+      // scoped exactly as the list beside them is. Asking for one scope here
+      // and rendering the other next to it is what made a folder claim 26 files
+      // against a list of 3.
       const [folders, treeRoot] = await Promise.all([
         getFolders(),
-        fetchFolderTree(),
+        fetchFolderTree(allOwners),
       ]);
       const flds: Folder[] = Array.isArray(folders) ? folders : [];
       setFlatFolders(flds);
@@ -117,7 +130,7 @@ export function FolderSidebar({
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [allOwners]);
 
   // Initial load
   useEffect(() => {
@@ -239,21 +252,23 @@ export function FolderSidebar({
             >
               <FolderPlus size={13} className="text-slate-400" />
             </button>
-            <button
-              type="button"
-              title={
-                selectedFolder
-                  ? `Delete "${selectedFolder.name}"`
-                  : "Select a folder to delete"
-              }
-              onClick={() =>
-                selectedFolderId && setDeleteTargetId(selectedFolderId)
-              }
-              disabled={!selectedFolderId}
-              className="p-1 rounded hover:bg-red-50 transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed"
-            >
-              <Trash2 size={13} className="text-slate-400" />
-            </button>
+            {canDeleteFolder && (
+              <button
+                type="button"
+                title={
+                  selectedFolder
+                    ? `Delete "${selectedFolder.name}"`
+                    : "Select a folder to delete"
+                }
+                onClick={() =>
+                  selectedFolderId && setDeleteTargetId(selectedFolderId)
+                }
+                disabled={!selectedFolderId}
+                className="p-1 rounded hover:bg-red-50 transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+              >
+                <Trash2 size={13} className="text-slate-400" />
+              </button>
+            )}
           </div>
         </div>
 
@@ -331,6 +346,7 @@ export function FolderSidebar({
                   onRequestDelete={setDeleteTargetId}
                   onRenameFolder={handleRenameFolder}
                   forceOpenId={justExpandedFolderId}
+                  canDelete={canDeleteFolder}
                 />
               ))}
 
