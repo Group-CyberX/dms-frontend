@@ -26,7 +26,7 @@ export default function LoginPage() {
           </p>
         </div>
 
-        {/* Login Form */}
+        {/* Login */}
         <Suspense fallback={<div className="text-center py-4 text-sm text-gray-500">Loading form...</div>}>
           <LoginForm />
         </Suspense>
